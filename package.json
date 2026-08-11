@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "A local, privacy-focused AI writing assistant powered by Ollama.",
-  "author": "AI Editor",
+  "author": "Akshat Kalkhanda <akshatkalkhanda@gmail.com>",
   "type": "module",
   "scripts": {
     "dev": "vite",
