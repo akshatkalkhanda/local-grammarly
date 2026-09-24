@@ -11,7 +11,7 @@ Local Grammarly is a privacy-focused desktop writing assistant for macOS. Select
 - Streaming suggestions, tone controls, and custom instructions
 - German, Dutch, and English translation with an explicit target language
 - Local-only Ollama configuration, history, and paste-back undo
-- Menu-bar-first macOS experience with an accessibility-enabled `⌘C` helper
+- Menu-bar-first macOS experience with clipboard detection and a `⌘⇧Space` selection helper
 
 ## Getting started
 
@@ -29,7 +29,7 @@ ollama pull qwen3:1.7b
 npm run dev
 ```
 
-Open **Settings** from the menu bar to select a locally installed Ollama model. `qwen3:1.7b` is a good lightweight starting point; choose a larger model if you prefer higher-quality suggestions.
+Open **Settings** from the menu bar to select a locally installed Ollama model. `qwen3:1.7b` is the lightweight default; choose a larger model if you prefer higher-quality suggestions. Existing installations retain their saved model selection, so change it in Settings if suggestions are slow. The app preloads the selected model at launch and keeps it in memory for 30 minutes after a request. Close other memory-heavy apps if your Mac starts swapping.
 
 For cross-application copy and paste support, grant **AI Editor** access in macOS **System Settings → Privacy & Security → Accessibility**.
 
