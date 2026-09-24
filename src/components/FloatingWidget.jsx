@@ -8,7 +8,7 @@ const actions = [
   { id: 'improve', label: 'Improve', icon: Sparkles, description: 'Clarity and flow' },
   { id: 'professional', label: 'Professional', icon: WandSparkles, description: 'Formal tone' },
   { id: 'concise', label: 'Shorten', icon: Minimize2, description: 'More concise' },
-  { id: 'translate', label: 'Translate', icon: Languages, description: 'English or Spanish' }
+  { id: 'translate', label: 'Translate', icon: Languages, description: 'English, German or Dutch' }
 ];
 
 function getDesktopApi() {
@@ -59,6 +59,7 @@ export default function FloatingWidget({ config }) {
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
     } catch (error) {
+      setSuggestion('');
       setNotice(error.message || 'Could not reach Ollama. Check its local service in Settings.');
     } finally {
       setIsGenerating(false);
@@ -82,7 +83,7 @@ export default function FloatingWidget({ config }) {
   };
 
   const copySuggestion = async () => {
-    if (!suggestion) return;
+    if (!suggestion || isGenerating) return;
     const desktop = getDesktopApi();
     if (desktop) desktop.copyText(suggestion);
     else await navigator.clipboard.writeText(suggestion);
@@ -90,7 +91,7 @@ export default function FloatingWidget({ config }) {
   };
 
   const replaceText = () => {
-    if (!suggestion) return;
+    if (!suggestion || isGenerating) return;
     const desktop = getDesktopApi();
     if (desktop) desktop.replaceText(suggestion);
     else copySuggestion();
@@ -137,8 +138,8 @@ export default function FloatingWidget({ config }) {
           <div className="suggestion-heading"><div><span>{isGenerating ? 'Writing now' : 'AI suggestion'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${tone}`}</strong></div><button className="text-button" onClick={() => requestSuggestion()} disabled={isGenerating}><RefreshCw size={14} />Try again</button></div>
           <DiffView originalText={selectedText} correctedText={suggestion} />
           <div className="suggestion-actions">
-            <button className="secondary-button" onClick={copySuggestion}><Copy size={15} />Copy</button>
-            <button className="primary-button" onClick={replaceText}><ClipboardPaste size={15} />Replace text</button>
+            <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating}><Copy size={15} />Copy</button>
+            <button className="primary-button" onClick={replaceText} disabled={isGenerating}><ClipboardPaste size={15} />Replace text</button>
           </div>
         </section>
       )}

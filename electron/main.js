@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const DEFAULT_CONFIG = {
   url: 'http://localhost:11434',
-  model: 'llama3',
+  model: 'qwen3:1.7b',
   systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
 };
 const ACTIONS = {
@@ -228,7 +228,7 @@ function createGenerationRequest(action, text, tone = 'neutral', customInstructi
     prompt: `${ACTIONS[action]}\n${TONES[chosenTone]}${translationRule ? `\n${translationRule}` : ''}${custom ? `\nAdditional instruction: ${custom}` : ''}\n\nText:\n${source}\n\n${OUTPUT_ONLY_RULE}`,
     options: {
       temperature: 0.2,
-      num_predict: Math.min(512, Math.max(96, Math.ceil(source.length / 3)))
+      num_predict: Math.min(2048, Math.max(128, Math.ceil(source.length / 2)))
     }
   };
 }
@@ -255,7 +255,8 @@ async function generateSuggestion(action, text, tone, customInstruction, transla
         system: request.system,
         prompt: request.prompt,
         stream: false,
-        keep_alive: '15m',
+        think: false,
+        keep_alive: '30m',
         options: request.options
       })
     });
@@ -277,7 +278,7 @@ async function streamSuggestion(action, text, tone, customInstruction, translati
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({ model: config.model, system: request.system, prompt: request.prompt, stream: true, keep_alive: '15m', options: request.options })
+      body: JSON.stringify({ model: config.model, system: request.system, prompt: request.prompt, stream: true, think: false, keep_alive: '30m', options: request.options })
     });
     if (!response.ok || !response.body) throw new Error(`Ollama returned ${response.status}.`);
     const decoder = new TextDecoder();
@@ -415,6 +416,12 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler(() => false);
   createFloatingWidget();
   registerIpc();
+  // Load the selected model while the app starts so the first suggestion avoids a cold load.
+  fetch(`${config.url}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: config.model, prompt: '', keep_alive: '30m' })
+  }).catch(() => {});
 
   tray = new Tray(nativeImage.createEmpty());
   tray.setTitle('AI Editor');
@@ -437,18 +444,8 @@ app.whenReady().then(async () => {
     lastClipboardText = currentText;
     if (BrowserWindow.getFocusedWindow()) return;
     showWidgetWithText(currentText);
-  }, 350);
+  }, 150);
 
-  globalShortcut.register('CommandOrControl+C', () => {
-    if (isCapturingCopy) return;
-    // Let the app's own copy shortcut keep working, without opening the widget over it.
-    if (BrowserWindow.getFocusedWindow()) {
-      isCapturingCopy = true;
-      simulateCommandKey('c').finally(() => setTimeout(() => { isCapturingCopy = false; }, 120));
-      return;
-    }
-    captureSelectionAndShow();
-  });
   globalShortcut.register('CommandOrControl+Shift+Space', () => captureSelectionAndShow({ showError: true }));
 
   app.on('activate', createSettingsWindow);

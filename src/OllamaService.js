@@ -1,5 +1,5 @@
 export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
-export const DEFAULT_MODEL = 'llama3';
+export const DEFAULT_MODEL = 'qwen3:1.7b';
 
 export class OllamaService {
   constructor(baseUrl = DEFAULT_OLLAMA_URL) {
