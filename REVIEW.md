@@ -1,0 +1,84 @@
+# Repository review — 2 October 2026
+
+Reviewed `main` at `dc5b636`. The changes on `fix/reliability-and-usage-guide` are a focused reliability update, documentation rewrite, and test baseline. They do not make this a production-ready replacement for Grammarly.
+
+## Bugs fixed in this change
+
+| Priority | Finding in the reviewed code | Change |
+| --- | --- | --- |
+| High | Copying new text while a request was running changed `selectedText`, but old stream callbacks still updated the suggestion. The old answer could be offered for the new selection. | Cancel on a new selection; gate chunks, final output, errors, and cleanup by request version. Main process aborts a sender's superseded request. |
+| High | The stream reader treated EOF as success, ignored Ollama error events, and ignored output-limit termination. Partial text could be saved and offered for replacement. | Require the terminal `done` event, reject error and length-limit events, and clear partial UI output on failure. |
+| High | Selections were silently shortened to 20,000 characters; replacement could overwrite the complete original selection with an answer based on only its prefix. | Preserve the selection and explicitly block overlong inputs in both the UI and generation request validation. |
+| Medium | Clipboard polling ran during synthetic copy/paste, and app-authored clipboard text was not consistently marked as already seen. | Suppress polling during these operations and synchronize clipboard tracking on app-authored writes. |
+| Medium | Settings could visually show the first installed model while retaining a different missing model as the saved value. | Display the missing value explicitly, explain the mismatch, and block saving it when the connected server confirms it is absent. |
+| Medium | Concurrent model-list requests could complete out of order; a hung `/api/tags` request had no timeout. | Ignore stale lookup results and apply a five-second desktop request timeout. |
+| Medium | Google Fonts caused an external UI request despite the local-first positioning. Local endpoint validation also allowed HTTP redirects. | Use system fonts; reject redirects and ambiguous URL query/fragment settings. Clarify the distinction between local endpoints and local inference. |
+| Medium | Six high-severity dependency-tree audit findings were present. | Apply compatible lockfile updates; final npm audit reported zero known findings on the review date. This is not proof that all runtime vulnerabilities are absent. |
+
+The new **Cancel generation** control aborts the desktop request, clears partial output, and permits a new request. Renderer destruction also aborts an active streamed request. Regression tests cover protocol errors, request isolation, cancellation UX, input-length handling, and model-selection races.
+
+## Remaining issues and risks
+
+These are not claimed as fixed. Findings below are from code inspection unless otherwise stated.
+
+| Priority | Location / evidence | Impact and next step |
+| --- | --- | --- |
+| High | `electron/main.js`: `widget:replace-text` hides the app, waits 500 ms, then sends ⌘V. `undoLastReplacement` sends ⌘Z to the focused app. | Neither operation verifies the original app, document, or selection. Switching apps/fields can paste or undo in the wrong place. Capture and revalidate target identity; disable automatic replacement when it cannot be verified. Until then, use manual Copy/paste. Native macOS reproduction is still needed. |
+| Medium | `electron/main.js`: `captureSelectionAndShow` snapshots only `clipboard.readText()` before `clipboard.clear()`. | A failed capture loses existing image/HTML/RTF clipboard formats. Preserve all supported formats or change capture to avoid clearing the clipboard; test on macOS with images, styled text, and file copies. |
+| Medium | `electron/main.js`: fixed 480×420 transparent widget; React collapse changes only visible content. | A tiny visible sparkle may leave a larger transparent window area intercepting mouse input. Confirm on macOS, then resize the native window when collapsing/expanding. |
+| Medium | `electron/main.js`: `createGenerationRequest` has an output cap but no explicit context-window budget. | Large selections can exceed the model's context budget. Output-limit detection prevents one kind of truncation, but model-side input truncation is still possible. Prefer sentence/paragraph chunks and reserve context for both prompt and output. |
+| Medium | `electron/main.js`: history persists originals and suggestions to JSON; no opt-out. | Sensitive text remains after use. Add a history-disable option and retention controls; consider storage protection appropriate to the deployment. |
+| Medium | `electron/main.js`: `saveConfig` updates in-memory config before the file write; history writes are not serialized/atomic. | Failed settings writes can leave the running state different from disk; overlapping history updates can race. Persist an atomic temporary-file rename before publishing settings and serialize history writes. |
+| Low | `src/OllamaService.js` and browser fallback in `FloatingWidget.jsx` | Browser fallback lacks desktop feature parity, such as translation-target prompting, cancellation, and URL enforcement. Keep it clearly documented as a development preview or consolidate generation logic. |
+| Low | `SettingsModal.jsx`, `AssistantSidebar.jsx`, `Editor.jsx`, `App.css`, template assets | Legacy UI remains outside the active App route. Remove it after confirming no intended alternate entrypoint; this will simplify maintenance. |
+| Release blocker for broad distribution | No LICENSE file or configured signing/notarization/release pipeline | Choose a license, validate the macOS package, configure signing, and establish release checks before distributing broadly. |
+
+Local model quality is another limit: a terminal success event does not prove the rewrite preserved meaning. Proper nouns, technical commands, identifiers, negation, and tone all need user review. The app should not advertise guaranteed correctness.
+
+## Suggested feature order
+
+1. **Safe replacement and undo.** Verify the source app/selection before paste-back; automatically fall back to Copy when unsure. This protects existing text.
+2. **Privacy controls.** Add “Pause clipboard detection”, a shortcut-only mode, an app exclusion list, and a history-off switch.
+3. **Useful performance feedback.** Show model name, elapsed time, first-token time, and generation rate. Use Ollama's reported timing fields; benchmark representative passages before promising speed improvements.
+4. **Writing preferences.** Personal dictionary and protected technical terms (for example censhare, Keycloak, HAProxy), British/American English, and reusable presets for emails, Jira tickets, and incident updates.
+5. **Paragraph-aware processing.** Estimate context usage, split long selections at natural boundaries, preserve formatting, and let users review each segment.
+6. **Release and onboarding.** First-run Ollama checks, clear model installation instructions, keyboard shortcut customization, login launch, signed builds, CI, and screenshots of the real macOS app.
+7. **Inline checking later.** A browser extension or editor integration is a separate product surface. Start it only after the desktop workflow is reliable.
+
+For faster suggestions, first measure latency on the user's actual Mac with the existing small model. Cancelling stale work avoids wasted inference; streaming alone does not increase token generation speed.
+
+## Validation performed
+
+- Dependency installation completed with the lockfile.
+- 18 regression cases passed: nine stream/URL checks, three preload IPC checks, and six React UI checks in jsdom.
+- `npm run lint` passed.
+- `npm run build:app` compiled the renderer and Electron main process.
+- `npm audit` reported zero known vulnerabilities after compatible dependency updates and the test dependency addition.
+- `git diff --check` passed.
+
+The UI tests use a mocked desktop bridge and transformed production React components. They do not exercise macOS APIs or a real model. The test runner may summarize the three test files; running each test file directly with Node prints its individual cases.
+
+Not run here: a macOS DMG build, code signing/notarization, Accessibility/Automation prompts, native focus/paste/undo behavior, visual macOS inspection, or real Ollama latency/quality benchmarks. This work was validated in Linux with Node 24.19.0.
+
+## Mac smoke test before merging/releasing
+
+Use disposable text in TextEdit and a browser form, with Ollama running.
+
+- Start with `npm ci` and `npm run dev`; confirm the menu-bar entry and settings.
+- Choose an installed model, save, quit, and reopen to verify persistence.
+- Copy a sentence, open the sparkle, and try each action, tone, and translation target.
+- During a slow generation, copy different text, start another request, and verify the old answer never appears for the new text.
+- Cancel before and after the first streamed output; immediately start a new action.
+- Stop Ollama during generation; ensure partial output cannot be copied/replaced and a retry works after restart.
+- Copy more than 20,000 characters and verify the explicit length warning.
+- Confirm Copy and Replace do not create a new popup from the assistant's own clipboard write.
+- Test Accessibility denied and allowed; preserve the source selection for paste-back, and use manual Copy if focus is uncertain.
+- Test multiple displays, scaled displays, collapsed-widget click-through, repeated identical copies, and rich clipboard content.
+- Clear history, restart, and verify the list remains empty.
+- Run `npm run build` on the target Mac and repeat the essential flow in the packaged application.
+
+## References
+
+- [Ollama generate API](https://docs.ollama.com/api/generate): streaming completion and timing fields.
+- [Ollama FAQ](https://docs.ollama.com/faq): local-only configuration, model memory residency, and GPU diagnostics.
+- [Electron clipboard API](https://www.electronjs.org/docs/latest/api/clipboard): text and other clipboard formats.

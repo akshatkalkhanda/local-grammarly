@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,7 @@ let lastClipboardText = '';
 let config = { ...DEFAULT_CONFIG };
 let history = [];
 let lastReplacement = null;
+const activeGenerations = new Map();
 
 const TONES = {
   neutral: 'Use a natural, clear, and neutral tone.',
@@ -50,15 +52,6 @@ function configPath() {
 
 function historyPath() {
   return path.join(app.getPath('userData'), 'history.json');
-}
-
-function validateUrl(value) {
-  const url = new URL(String(value));
-  const localHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-  if (!['http:', 'https:'].includes(url.protocol) || !localHosts.has(url.hostname) || url.username || url.password) {
-    throw new Error('For privacy, the Ollama endpoint must be a local http(s) address.');
-  }
-  return url.toString().replace(/\/$/, '');
 }
 
 function sanitizeConfig(candidate = {}) {
@@ -194,8 +187,9 @@ function positionWidget(window) {
 }
 
 function showWidgetWithText(text, focus = false) {
-  const cleanText = String(text ?? '').trim().slice(0, MAX_SELECTION_LENGTH);
-  if (!cleanText) return;
+  const cleanText = String(text ?? '');
+  if (!cleanText.trim()) return;
+  if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
   const window = createFloatingWidget();
   pendingText = cleanText;
   if (!widgetReady) return;
@@ -212,8 +206,9 @@ function showWidgetWithText(text, focus = false) {
 
 function createGenerationRequest(action, text, tone = 'neutral', customInstruction = '', translationTarget = 'English') {
   if (!Object.hasOwn(ACTIONS, action)) throw new Error('Unsupported writing action.');
-  const source = String(text ?? '').trim().slice(0, MAX_SELECTION_LENGTH);
-  if (!source) throw new Error('Select some text before requesting a suggestion.');
+  const source = String(text ?? '');
+  if (source.length > MAX_SELECTION_LENGTH) throw new Error('Select at most 20,000 characters. Split longer text into smaller passages.');
+  if (!source.trim()) throw new Error('Select some text before requesting a suggestion.');
   const chosenTone = Object.hasOwn(TONES, tone) ? tone : 'neutral';
   const custom = String(customInstruction ?? '').trim().slice(0, 500);
   const target = ['English', 'German', 'Dutch'].includes(translationTarget) ? translationTarget : 'English';
@@ -248,6 +243,7 @@ async function generateSuggestion(action, text, tone, customInstruction, transla
   try {
     const response = await fetch(`${config.url}/api/generate`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
@@ -262,47 +258,27 @@ async function generateSuggestion(action, text, tone, customInstruction, transla
     });
     if (!response.ok) throw new Error(`Ollama returned ${response.status}.`);
     const data = await response.json();
+    validateCompletion(data);
     return cleanSuggestion(data.response);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function streamSuggestion(action, text, tone, customInstruction, translationTarget, onChunk) {
+async function streamSuggestion(action, text, tone, customInstruction, translationTarget, onChunk, controller = new AbortController()) {
   const request = createGenerationRequest(action, text, tone, customInstruction, translationTarget);
-  const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
-  let result = '';
   try {
     const response = await fetch(`${config.url}/api/generate`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({ model: config.model, system: request.system, prompt: request.prompt, stream: true, think: false, keep_alive: '30m', options: request.options })
     });
     if (!response.ok || !response.body) throw new Error(`Ollama returned ${response.status}.`);
-    const decoder = new TextDecoder();
-    let remainder = '';
-    for await (const chunk of response.body) {
-      remainder += decoder.decode(chunk, { stream: true });
-      const lines = remainder.split('\n');
-      remainder = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const data = JSON.parse(line);
-        if (data.response) {
-          result += data.response;
-          onChunk(data.response);
-        }
-      }
-    }
-    if (remainder.trim()) {
-      const data = JSON.parse(remainder);
-      if (data.response) {
-        result += data.response;
-        onChunk(data.response);
-      }
-    }
+    const result = await readGenerationStream(response.body, onChunk);
+    controller.signal.throwIfAborted();
     const suggestion = cleanSuggestion(result);
     if (!suggestion) throw new Error('Ollama returned an empty suggestion.');
     await addHistory({ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, createdAt: new Date().toISOString(), action: request.action, tone: request.tone, translationTarget: action === 'translate' ? translationTarget : undefined, original: request.source, suggestion });
@@ -350,24 +326,46 @@ async function captureSelectionAndShow({ focus = true, showError = false } = {})
   }
 }
 
+function writeAssistantClipboard(text) {
+  const value = String(text ?? '');
+  clipboard.writeText(value);
+  lastClipboardText = value;
+}
+
 function registerIpc() {
   ipcMain.handle('config:get', () => config);
   ipcMain.handle('config:save', (_event, candidate) => saveConfig(candidate));
   ipcMain.handle('ollama:models', async (_event, url) => {
     const baseUrl = validateUrl(url);
-    const response = await fetch(`${baseUrl}/api/tags`);
+    const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5_000), redirect: 'error' });
     if (!response.ok) throw new Error(`Ollama returned ${response.status}.`);
     const data = await response.json();
     return (data.models ?? []).map(({ name }) => name).filter(Boolean);
   });
   ipcMain.handle('ollama:generate', (_event, { action, text, tone, customInstruction, translationTarget }) => generateSuggestion(action, text, tone, customInstruction, translationTarget));
+  ipcMain.on('ollama:cancel', (event) => activeGenerations.get(event.sender.id)?.abort());
   ipcMain.on('ollama:generate-stream', (event, { requestId, action, text, tone, customInstruction, translationTarget }) => {
+    const sender = event.sender;
+    const senderId = sender.id;
+    activeGenerations.get(senderId)?.abort();
+    const controller = new AbortController();
+    activeGenerations.set(senderId, controller);
+    const abort = () => controller.abort();
+    sender.once('destroyed', abort);
+    const send = (message) => {
+      if (!sender.isDestroyed()) sender.send('ollama:stream-response', { requestId, ...message });
+    };
     streamSuggestion(action, text, tone, customInstruction, translationTarget, (chunk) => {
-      event.sender.send('ollama:stream-response', { requestId, type: 'chunk', chunk });
-    }).then((suggestion) => {
-      event.sender.send('ollama:stream-response', { requestId, type: 'done', suggestion });
+      if (!controller.signal.aborted) send({ type: 'chunk', chunk });
+    }, controller).then((suggestion) => {
+      send({ type: 'done', suggestion });
     }).catch((error) => {
-      event.sender.send('ollama:stream-response', { requestId, type: 'error', message: error.message || 'Could not generate a suggestion.' });
+      send({ type: 'error', message: error.name === 'AbortError'
+        ? 'Generation cancelled or timed out. Try a shorter passage or a smaller model.'
+        : error.message || 'Could not generate a suggestion.' });
+    }).finally(() => {
+      sender.removeListener('destroyed', abort);
+      if (activeGenerations.get(senderId) === controller) activeGenerations.delete(senderId);
     });
   });
   ipcMain.handle('history:list', () => history);
@@ -380,10 +378,10 @@ function registerIpc() {
     if (pendingText) showWidgetWithText(pendingText);
   });
   ipcMain.on('widget:hide', () => mainWindow?.hide());
-  ipcMain.on('widget:copy', (_event, text) => clipboard.writeText(String(text ?? '').slice(0, MAX_SELECTION_LENGTH)));
+  ipcMain.on('widget:copy', (_event, text) => writeAssistantClipboard(text));
   ipcMain.on('widget:replace-text', async (_event, newText) => {
     isPasting = true;
-    clipboard.writeText(String(newText ?? '').slice(0, MAX_SELECTION_LENGTH));
+    writeAssistantClipboard(newText);
     lastReplacement = { expiresAt: Date.now() + 60_000 };
     if (process.platform === 'darwin') app.hide();
     else mainWindow?.hide();
@@ -419,8 +417,10 @@ app.whenReady().then(async () => {
   // Load the selected model while the app starts so the first suggestion avoids a cold load.
   fetch(`${config.url}/api/generate`, {
     method: 'POST',
+    redirect: 'error',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: config.model, prompt: '', keep_alive: '30m' })
+    signal: AbortSignal.timeout(60_000),
+    body: JSON.stringify({ model: config.model, prompt: '', keep_alive: '30m', stream: false })
   }).catch(() => {});
 
   tray = new Tray(nativeImage.createEmpty());
@@ -439,6 +439,7 @@ app.whenReady().then(async () => {
 
   lastClipboardText = clipboard.readText();
   setInterval(() => {
+    if (isPasting || isCapturingCopy) return;
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;

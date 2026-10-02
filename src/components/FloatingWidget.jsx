@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loader2, Minimize2, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
 import DiffView from './DiffView';
 import { OllamaService } from '../OllamaService';
@@ -25,6 +25,9 @@ export default function FloatingWidget({ config }) {
   const [tone, setTone] = useState('neutral');
   const [customInstruction, setCustomInstruction] = useState('');
   const [translationTarget, setTranslationTarget] = useState('English');
+  const requestVersion = useRef(0);
+  const generationActive = useRef(false);
+  const selectionTooLong = selectedText.length > 20_000;
   const wordCount = useMemo(() => selectedText ? selectedText.trim().split(/\s+/).length : 0, [selectedText]);
 
   useEffect(() => {
@@ -34,17 +37,28 @@ export default function FloatingWidget({ config }) {
       return undefined;
     }
     const removeListener = desktop.onTextSelected((text) => {
+      requestVersion.current += 1;
+      generationActive.current = false;
+      desktop.cancelGeneration();
+      setIsGenerating(false);
       setSelectedText(text);
       setSuggestion('');
       setNotice('');
       setIsExpanded(false);
     });
     desktop.ready();
-    return removeListener;
+    return () => {
+      requestVersion.current += 1;
+      generationActive.current = false;
+      desktop.cancelGeneration();
+      removeListener();
+    };
   }, []);
 
   const requestSuggestion = async (action = activeAction) => {
-    if (!selectedText || isGenerating) return;
+    if (!selectedText.trim() || generationActive.current || selectionTooLong) return;
+    generationActive.current = true;
+    const version = ++requestVersion.current;
     setIsGenerating(true);
     setSuggestion('');
     setNotice('');
@@ -53,17 +67,31 @@ export default function FloatingWidget({ config }) {
       const desktop = getDesktopApi();
       const response = desktop
         ? await desktop.generateStream(action, selectedText, tone, customInstruction, translationTarget, (chunk) => {
-          setSuggestion((current) => current + chunk);
+          if (version === requestVersion.current) setSuggestion((current) => current + chunk);
         })
         : await new OllamaService(config.url).generateSuggestion(config.model, `${action}:\n${selectedText}`, config.systemPrompt);
+      if (version !== requestVersion.current) return;
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
     } catch (error) {
+      if (version !== requestVersion.current) return;
       setSuggestion('');
       setNotice(error.message || 'Could not reach Ollama. Check its local service in Settings.');
     } finally {
-      setIsGenerating(false);
+      if (version === requestVersion.current) {
+        generationActive.current = false;
+        setIsGenerating(false);
+      }
     }
+  };
+
+  const cancelGeneration = () => {
+    requestVersion.current += 1;
+    generationActive.current = false;
+    getDesktopApi()?.cancelGeneration();
+    setIsGenerating(false);
+    setSuggestion('');
+    setNotice('Generation cancelled.');
   };
 
   const minimizeToPill = () => {
@@ -125,7 +153,7 @@ export default function FloatingWidget({ config }) {
           </div>
           <div className="action-grid">
             {actions.map(({ id, label, icon: Icon, description }) => (
-              <button key={id} className={`action-button ${activeAction === id ? 'is-active' : ''}`} onClick={() => requestSuggestion(id)} disabled={isGenerating}>
+              <button key={id} className={`action-button ${activeAction === id ? 'is-active' : ''}`} onClick={() => requestSuggestion(id)} disabled={isGenerating || selectionTooLong}>
                 {isGenerating && activeAction === id ? <Loader2 size={16} className="loader" /> : <Icon size={16} />}
                 <span>{label}<small>{description}</small></span>
               </button>
@@ -143,6 +171,8 @@ export default function FloatingWidget({ config }) {
           </div>
         </section>
       )}
+      {isGenerating && <button className="text-button" onClick={cancelGeneration}>Cancel generation</button>}
+      {selectionTooLong && <div className="widget-notice">Select at most 20,000 characters. Split longer text into smaller passages.</div>}
       {notice && <div className="widget-notice">{notice}</div>}
     </main>
   );
