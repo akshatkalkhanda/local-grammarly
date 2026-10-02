@@ -293,7 +293,7 @@ async function streamSuggestion(action, text, tone, customInstruction, translati
   }
 }
 
-const POWERSHELL_FOREGROUND = 'Add-Type "using System;using System.Runtime.InteropServices;public class LgWin{[DllImport(\\"user32.dll\\")]public static extern IntPtr GetForegroundWindow();[DllImport(\\"user32.dll\\")]public static extern bool SetForegroundWindow(IntPtr h);}";';
+const POWERSHELL_FOREGROUND = 'Add-Type "using System;using System.Runtime.InteropServices;public class LgWin{[DllImport(\"user32.dll\")]public static extern IntPtr GetForegroundWindow();[DllImport(\"user32.dll\")]public static extern bool SetForegroundWindow(IntPtr h);}";';
 
 function simulateCommandKey(key) {
   if (process.platform === 'darwin') {
@@ -342,16 +342,11 @@ async function activatePreviousApp() {
   if (previousApp.window) await execFileAsync('xdotool', ['windowactivate', '--sync', previousApp.window]);
 }
 
-// Accessibility is granted per signed binary, so a packaged build does not
-// inherit the permission the development build was given.
-function assertCanSynthesizeInput() {
-  if (process.platform !== 'darwin') return;
-  if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-    const error = new Error('Accessibility permission is required to paste automatically.');
-    error.code = 'ACCESSIBILITY_DENIED';
-    throw error;
-  }
-}
+// macOS 27 renamed the Accessibility pane to Device Control and Data Access.
+// Electron's isTrustedAccessibilityClient(false) can still return false on
+// macOS 27 even when the new UI shows this app as enabled, so do not block a
+// paste based only on that preflight result. The actual osascript operation
+// below is the authoritative check.
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -446,7 +441,6 @@ function registerIpc() {
     writeAssistantClipboard(newText);
     lastReplacement = { expiresAt: Date.now() + 60_000 };
     try {
-      assertCanSynthesizeInput();
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
       await activatePreviousApp();
       // Give the target application time to actually take focus.
@@ -455,11 +449,12 @@ function registerIpc() {
       return { ok: true };
     } catch (error) {
       console.error('Paste-back failed:', error);
-      if (error.code === 'ACCESSIBILITY_DENIED') {
+      const details = `${error?.message ?? ''} ${error?.stderr ?? ''}`;
+      if (/accessibility|assistive|not allowed|not permitted|1743|1719/i.test(details)) {
         return {
           ok: false,
           reason: 'accessibility',
-          message: 'Allow this app under System Settings > Privacy & Security > Accessibility, then try again. The suggestion is already on your clipboard.'
+          message: 'macOS rejected the paste event. AI Editor is enabled under Device Control and Data Access, so quit and reopen AI Editor, then try again. The suggestion is already on your clipboard.'
         };
       }
       return {
