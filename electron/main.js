@@ -36,6 +36,9 @@ let lastClipboardText = '';
 let config = { ...DEFAULT_CONFIG };
 let history = [];
 let lastReplacement = null;
+let isReplacing = false;
+let previousApp = null;
+let suppressClipboardUntil = 0;
 const activeGenerations = new Map();
 
 const TONES = {
@@ -137,7 +140,7 @@ function createFloatingWidget() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'widget' });
   }
   mainWindow.on('blur', () => {
-    if (!isPasting) mainWindow.hide();
+    if (!isPasting && !isReplacing) mainWindow.hide();
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -189,6 +192,8 @@ function positionWidget(window) {
 function showWidgetWithText(text, focus = false) {
   const cleanText = String(text ?? '');
   if (!cleanText.trim()) return;
+  // Recorded before the widget appears, so the later paste-back has a target.
+  captureFrontmostApp();
   if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
   const window = createFloatingWidget();
   pendingText = cleanText;
@@ -288,11 +293,64 @@ async function streamSuggestion(action, text, tone, customInstruction, translati
   }
 }
 
+const POWERSHELL_FOREGROUND = 'Add-Type "using System;using System.Runtime.InteropServices;public class LgWin{[DllImport(\\"user32.dll\\")]public static extern IntPtr GetForegroundWindow();[DllImport(\\"user32.dll\\")]public static extern bool SetForegroundWindow(IntPtr h);}";';
+
 function simulateCommandKey(key) {
   if (process.platform === 'darwin') {
     return execFileAsync('osascript', ['-e', `tell application "System Events" to keystroke "${key}" using command down`]);
   }
-  return Promise.resolve();
+  if (process.platform === 'win32') {
+    return execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^${key}")`]);
+  }
+  return execFileAsync('xdotool', ['key', '--clearmodifiers', `ctrl+${key}`]);
+}
+
+// The paste-back must land in the app the user was typing in, so remember it
+// before the widget takes focus away.
+async function captureFrontmostApp() {
+  try {
+    if (process.platform === 'darwin') {
+      const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true']);
+      const bundleId = stdout.trim();
+      if (bundleId && bundleId !== app.getBundleId()) previousApp = { bundleId };
+      return;
+    }
+    if (process.platform === 'win32') {
+      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::GetForegroundWindow().ToInt64()`]);
+      const handle = stdout.trim();
+      if (handle && handle !== '0') previousApp = { handle };
+      return;
+    }
+    const { stdout } = await execFileAsync('xdotool', ['getactivewindow']);
+    const window = stdout.trim();
+    if (window) previousApp = { window };
+  } catch (error) {
+    console.error('Could not record the frontmost app:', error);
+  }
+}
+
+async function activatePreviousApp() {
+  if (!previousApp) return;
+  if (process.platform === 'darwin' && previousApp.bundleId) {
+    await execFileAsync('osascript', ['-e', `tell application id "${previousApp.bundleId}" to activate`]);
+    return;
+  }
+  if (process.platform === 'win32' && previousApp.handle) {
+    await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::SetForegroundWindow([IntPtr]${previousApp.handle})`]);
+    return;
+  }
+  if (previousApp.window) await execFileAsync('xdotool', ['windowactivate', '--sync', previousApp.window]);
+}
+
+// Accessibility is granted per signed binary, so a packaged build does not
+// inherit the permission the development build was given.
+function assertCanSynthesizeInput() {
+  if (process.platform !== 'darwin') return;
+  if (!systemPreferences.isTrustedAccessibilityClient(false)) {
+    const error = new Error('Accessibility permission is required to paste automatically.');
+    error.code = 'ACCESSIBILITY_DENIED';
+    throw error;
+  }
 }
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -303,6 +361,7 @@ async function captureSelectionAndShow({ focus = true, showError = false } = {})
   const previousClipboard = clipboard.readText();
   clipboard.clear();
   try {
+    await captureFrontmostApp();
     await wait(100);
     await simulateCommandKey('c');
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -330,6 +389,7 @@ function writeAssistantClipboard(text) {
   const value = String(text ?? '');
   clipboard.writeText(value);
   lastClipboardText = value;
+  suppressClipboardUntil = Date.now() + 1_000;
 }
 
 function registerIpc() {
@@ -379,17 +439,38 @@ function registerIpc() {
   });
   ipcMain.on('widget:hide', () => mainWindow?.hide());
   ipcMain.on('widget:copy', (_event, text) => writeAssistantClipboard(text));
-  ipcMain.on('widget:replace-text', async (_event, newText) => {
+  // Returns a result so the widget can report a failure instead of closing silently.
+  ipcMain.handle('widget:replace-text', async (_event, newText) => {
     isPasting = true;
+    isReplacing = true;
     writeAssistantClipboard(newText);
     lastReplacement = { expiresAt: Date.now() + 60_000 };
-    if (process.platform === 'darwin') app.hide();
-    else mainWindow?.hide();
-    setTimeout(async () => {
-      try { await simulateCommandKey('v'); }
-      catch (error) { console.error('Paste-back failed:', error); }
-      finally { isPasting = false; }
-    }, 500);
+    try {
+      assertCanSynthesizeInput();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      await activatePreviousApp();
+      // Give the target application time to actually take focus.
+      await wait(250);
+      await simulateCommandKey('v');
+      return { ok: true };
+    } catch (error) {
+      console.error('Paste-back failed:', error);
+      if (error.code === 'ACCESSIBILITY_DENIED') {
+        return {
+          ok: false,
+          reason: 'accessibility',
+          message: 'Allow this app under System Settings > Privacy & Security > Accessibility, then try again. The suggestion is already on your clipboard.'
+        };
+      }
+      return {
+        ok: false,
+        reason: 'paste',
+        message: 'Could not paste automatically. The suggestion is on your clipboard, so you can paste it manually.'
+      };
+    } finally {
+      isReplacing = false;
+      setTimeout(() => { isPasting = false; }, 300);
+    }
   });
 }
 
@@ -439,7 +520,7 @@ app.whenReady().then(async () => {
 
   lastClipboardText = clipboard.readText();
   setInterval(() => {
-    if (isPasting || isCapturingCopy) return;
+    if (isPasting || isCapturingCopy || isReplacing || Date.now() < suppressClipboardUntil) return;
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;
