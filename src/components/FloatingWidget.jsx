@@ -22,6 +22,7 @@ export default function FloatingWidget({ config }) {
   const [activeAction, setActiveAction] = useState('grammar');
   const [isExpanded, setIsExpanded] = useState(false);
   const [notice, setNotice] = useState('');
+  const [isReplacing, setIsReplacing] = useState(false);
   const [tone, setTone] = useState('neutral');
   const [customInstruction, setCustomInstruction] = useState('');
   const [translationTarget, setTranslationTarget] = useState('English');
@@ -118,12 +119,26 @@ export default function FloatingWidget({ config }) {
     setNotice('Copied to clipboard');
   };
 
-  const replaceText = () => {
-    if (!suggestion || isGenerating) return;
+  // Only dismiss once the main process confirms the paste, otherwise a failed
+  // replace closes the widget and looks like a silent success.
+  const replaceText = async () => {
+    if (!suggestion || isGenerating || isReplacing) return;
     const desktop = getDesktopApi();
-    if (desktop) desktop.replaceText(suggestion);
-    else copySuggestion();
-    dismiss();
+    if (!desktop) {
+      await copySuggestion();
+      return;
+    }
+    setIsReplacing(true);
+    setNotice('');
+    try {
+      const result = await desktop.replaceText(suggestion);
+      if (result?.ok) dismiss();
+      else setNotice(result?.message ?? 'Could not paste automatically. The suggestion is on your clipboard.');
+    } catch (error) {
+      setNotice(error.message || 'Could not paste automatically. The suggestion is on your clipboard.');
+    } finally {
+      setIsReplacing(false);
+    }
   };
 
   if (!selectedText) return null;
@@ -166,8 +181,8 @@ export default function FloatingWidget({ config }) {
           <div className="suggestion-heading"><div><span>{isGenerating ? 'Writing now' : 'AI suggestion'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${tone}`}</strong></div><button className="text-button" onClick={() => requestSuggestion()} disabled={isGenerating}><RefreshCw size={14} />Try again</button></div>
           <DiffView originalText={selectedText} correctedText={suggestion} />
           <div className="suggestion-actions">
-            <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating}><Copy size={15} />Copy</button>
-            <button className="primary-button" onClick={replaceText} disabled={isGenerating}><ClipboardPaste size={15} />Replace text</button>
+            <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating || isReplacing}><Copy size={15} />Copy</button>
+            <button className="primary-button" onClick={replaceText} disabled={isGenerating || isReplacing}><ClipboardPaste size={15} />{isReplacing ? 'Replacing…' : 'Replace text'}</button>
           </div>
         </section>
       )}
