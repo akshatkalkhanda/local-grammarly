@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('ollama:stream-response', listener);
     ipcRenderer.send('ollama:generate-stream', { requestId, action, text, tone, customInstruction, translationTarget });
   }),
+  cancelGeneration: () => ipcRenderer.send('ollama:cancel'),
   getHistory: () => ipcRenderer.invoke('history:list'),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   hideWidget: () => ipcRenderer.send('widget:hide'),
