@@ -13,6 +13,11 @@ export function parseFrontmostApp(output, ownPid) {
   };
 }
 
+export function parseFrontmostPid(output, ownPid) {
+  const pid = Number(String(output).trim());
+  return Number.isSafeInteger(pid) && pid > 0 && pid !== ownPid ? { pid } : null;
+}
+
 export async function readFrontmostMacApp(execFileAsync, ownPid) {
   const { stdout } = await execFileAsync('osascript', ['-l', 'JavaScript', '-e', FRONTMOST_APP_SCRIPT]);
   return parseFrontmostApp(stdout, ownPid);
