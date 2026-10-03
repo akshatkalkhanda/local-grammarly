@@ -3,7 +3,8 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-let size = 36
+let size = 24
+let designSize: CGFloat = 36
 let colorSpace = CGColorSpaceCreateDeviceRGB()
 let bitmapInfo = CGBitmapInfo.byteOrder32Big.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
 guard let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
@@ -12,6 +13,7 @@ guard let context = CGContext(data: nil, width: size, height: size, bitsPerCompo
 }
 
 context.clear(CGRect(x: 0, y: 0, width: size, height: size))
+context.scaleBy(x: CGFloat(size) / designSize, y: CGFloat(size) / designSize)
 let bubble = CGPath(roundedRect: CGRect(x: 6, y: 10, width: 24, height: 20), cornerWidth: 3.5, cornerHeight: 3.5, transform: nil)
 context.addPath(bubble)
 context.move(to: CGPoint(x: 14, y: 10))
