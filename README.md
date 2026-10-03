@@ -62,7 +62,7 @@ Keep the terminal running. Look for **AI Editor** in the macOS menu bar: the mai
 
 ### 4. Grant macOS permissions
 
-Open **System Settings → Privacy & Security → Accessibility** and allow the running app. A source/development run may appear as **Electron**; a packaged build appears as **AI Editor**. Restart the app if the permission does not take effect. If macOS separately requests Automation permission for System Events, allow it for the app you are running.
+Open **System Settings → Privacy & Security → Device Control and Data Access** (called **Accessibility** on older macOS versions) and allow the running app. A source/development run may appear as **Electron**; a packaged build appears as **AI Editor**. Fully quit and restart the app after changing this setting; Electron's trust check can retain the earlier status until restart. If macOS separately requests Automation permission for System Events, allow it for the app you are running.
 
 Normal copy detection works without Accessibility permission. The selection shortcut, Replace, and tray Undo need keyboard automation permission.
 
@@ -166,6 +166,7 @@ The browser preview is for UI development. It does not provide the desktop clipb
 | Generation times out | Use a shorter passage or smaller model; Cancel lets you retry without waiting |
 | Suggestion reaches output limit | Select a shorter passage; the app will not let you apply the incomplete result |
 | ⌘⇧Space or Replace does nothing | Check Accessibility/Automation permission for the actual running Electron/AI Editor app. Keep the original text selected until you click Replace. On failure, paste manually from the clipboard. |
+| Permission switch is on but Replace still says access denied | Fully quit and relaunch the development Electron app or packaged AI Editor. Newer versions attempt the copy/paste operation and report an actual macOS automation denial instead of stopping at a preflight trust check. If it still fails, remove and add the exact running app again in Device Control and Data Access. |
 | “The original app could not be identified” | Install a build containing the macOS frontmost-app fix. Quit and reopen AI Editor, copy text again from the source app, then retry. An existing suggestion captured by an older build cannot regain its missing source-app identity. |
 | Popup does not reappear for identical text | Use the menu's clipboard action; automatic detection compares text values |
 | Paste goes to the wrong place | Use manual Copy/paste; preserve the original selection and avoid switching documents. The safeguard compares app identity and selected text, not document identity. |

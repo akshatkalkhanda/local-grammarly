@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
-import { activateMacApp, readFrontmostMacApp } from './macos-app.js';
+import { activateMacApp, isMacInputPermissionError, readFrontmostMacApp } from './macos-app.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -382,18 +382,7 @@ async function verifyOriginalSelection() {
       return;
     }
   }
-  throw new Error('The original text is no longer selected.');
-}
-
-// Accessibility is granted per signed binary, so a packaged build does not
-// inherit the permission the development build was given.
-function assertCanSynthesizeInput() {
-  if (process.platform !== 'darwin') return;
-  if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-    const error = new Error('Accessibility permission is required to paste automatically.');
-    error.code = 'ACCESSIBILITY_DENIED';
-    throw error;
-  }
+  throw new Error('The source app did not copy the original text. Keep it selected and check macOS keyboard-control permission.');
 }
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -488,7 +477,8 @@ function registerIpc() {
     isReplacing = true;
     writeAssistantClipboard(newText);
     try {
-      assertCanSynthesizeInput();
+      // Trust status can disagree with the Settings toggle. Verify the actual
+      // copy command and selected text below instead of blocking on a preflight boolean.
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
       await wait(100);
       if (!sameTarget(previousApp, await captureFrontmostApp())) await activatePreviousApp();
@@ -503,11 +493,11 @@ function registerIpc() {
     } catch (error) {
       console.error('Paste-back failed:', error);
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
-      if (error.code === 'ACCESSIBILITY_DENIED') {
+      if (process.platform === 'darwin' && isMacInputPermissionError(error)) {
         return {
           ok: false,
-          reason: 'accessibility',
-          message: 'Allow this app under System Settings > Privacy & Security > Accessibility, then try again. The suggestion is already on your clipboard.'
+          reason: 'permission',
+          message: 'macOS blocked keyboard control. Check Device Control and Data Access (or Accessibility) and Automation for the running Electron/AI Editor app, then fully quit and reopen it. The suggestion is on your clipboard.'
         };
       }
       return {
