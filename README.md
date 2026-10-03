@@ -1,8 +1,8 @@
 # Local Grammarly · AI Editor
 
-A macOS menu-bar writing assistant powered by Ollama. Copy a passage, choose a writing action, review the changes, and copy or paste the result back into your app.
+A macOS menu-bar writing assistant powered by Ollama. Copy selected text to get an automatic grammar suggestion, review the changes, then copy or replace the selection in your app.
 
-**Status: beta.** This is a standalone desktop assistant, not a browser extension or an inline grammar checker. It does not underline mistakes as you type. AI output and cross-app paste-back need your review.
+**Status: beta.** This is a standalone desktop assistant. Automatic checking starts when you copy selected text; it does not underline mistakes as you type in every app. AI output and cross-app paste-back need your review.
 
 ## What you can do
 
@@ -14,7 +14,7 @@ A macOS menu-bar writing assistant powered by Ollama. Copy a passage, choose a w
 | Shorten | Make a passage more concise |
 | Translate | Translate into English, German, or Dutch |
 
-You can also choose a tone, add a custom instruction, watch streamed output, cancel a request, compare word-level changes, and revisit recent suggestions. Copy and Replace stay disabled until generation finishes successfully.
+Grammar checking starts automatically on new copied text by default. You can turn it off in Settings, choose another action, set a tone, add a custom instruction, watch streamed output, cancel a request, compare word-level changes, and revisit recent suggestions. Copy and Replace stay disabled until generation finishes successfully.
 
 ## Requirements
 
@@ -69,18 +69,18 @@ Normal copy detection works without Accessibility permission. The selection shor
 ## Daily use
 
 1. Select a short passage in TextEdit, Mail, a browser text field, or another app.
-2. Press **⌘C**. A small sparkle button appears near the pointer when clipboard text changes.
-3. Click the sparkle, choose an optional tone/custom instruction, then a writing action.
-4. Review the result. Red strikethrough shows removals; green highlights show additions. Longer texts fall back to a plain result to keep the UI responsive.
-5. Choose **Copy** for manual pasting, or **Replace text** to attempt paste-back into the previously active app.
+2. Press **⌘C**. The assistant appears near the pointer and starts a grammar suggestion. If you disabled automatic suggestions in Settings, click the sparkle and choose **Correct**.
+3. Review the result. Red strikethrough shows removals; green highlights show additions. Longer texts fall back to a plain result to keep the UI responsive.
+4. Choose another writing action or tone if needed.
+5. Choose **Copy** for manual pasting, or **Replace text** to attempt paste-back into the source app.
 
 Example custom instructions: “Keep product names unchanged”, “Use British English”, or “Keep it under 80 words”. They guide the model; they are not guaranteed constraints.
 
-**Keep the original selection intact until replacing.** The current paste-back implementation does not verify the original document or selection. If you switched apps or moved the cursor, use Copy and paste manually into the intended selection.
+**Keep the original selection intact until replacing.** Replace first reactivates the source app and copies the current selection to confirm it still matches the text you submitted. If the app or selection changed, replacement stops, leaves the suggestion on the clipboard, and shows an error. The check cannot distinguish two windows with identical selected text, and it cannot prove that the target accepted the paste command. Use Copy and paste manually when the destination is uncertain.
 
 | Control | Behavior |
 | --- | --- |
-| ⌘⇧Space | Attempts to copy the current selection and open the assistant |
+| ⌘⇧Space | Attempts to copy the current selection, open the assistant, and start grammar checking when automatic suggestions are enabled |
 | Menu → Open assistant for clipboard | Opens current clipboard text; useful if copying the same text does not trigger a popup |
 | Cancel generation | Stops the desktop request and discards partial output |
 | Try again | Regenerates using the current action and controls |
@@ -100,7 +100,7 @@ The last 30 completed suggestions are saved locally, including original text. Se
 ## Privacy and network behavior
 
 - The desktop app accepts only loopback Ollama URLs (`localhost`, `127.0.0.1`, or `[::1]`) using HTTP/HTTPS. Credentials, query strings, fragments, and HTTP redirects are rejected.
-- It monitors changes to plain-text clipboard content while running. Copy detection displays text locally; generation starts when you choose an action.
+- It monitors changes to plain-text clipboard content while running. With automatic suggestions enabled, new copied text is sent to your configured Ollama endpoint immediately. Turn the option off in Settings if you want generation only after choosing an action.
 - The UI uses system fonts and does not fetch Google Fonts.
 - A loopback address alone **does not prove local inference**: a local Ollama server can use cloud models or a local proxy can forward requests. Use a downloaded local model and disable Ollama Cloud if you require local-only processing.
 - Installing dependencies and downloading models requires network access. Your operating system or clipboard manager may also sync copied text independently of this app.
@@ -165,13 +165,17 @@ The browser preview is for UI development. It does not provide the desktop clipb
 | First response is slow | Model loading can be slow; try a short paragraph and check `ollama ps`/memory pressure |
 | Generation times out | Use a shorter passage or smaller model; Cancel lets you retry without waiting |
 | Suggestion reaches output limit | Select a shorter passage; the app will not let you apply the incomplete result |
-| ⌘⇧Space or Replace does nothing | Check Accessibility/Automation permission for the actual running Electron/AI Editor app |
+| ⌘⇧Space or Replace does nothing | Check Accessibility/Automation permission for the actual running Electron/AI Editor app. Keep the original text selected until you click Replace. On failure, paste manually from the clipboard. |
 | Popup does not reappear for identical text | Use the menu's clipboard action; automatic detection compares text values |
-| Paste goes to the wrong place | Use manual Copy/paste; preserve the original selection and avoid switching apps |
+| Paste goes to the wrong place | Use manual Copy/paste; preserve the original selection and avoid switching documents. The safeguard compares app identity and selected text, not document identity. |
 | npm reports an unsupported Node version | Check `node --version`; use the supported versions listed above, then rerun `npm ci` |
 | Browser preview cannot reach Ollama | Use the Electron app; its main process handles requests without browser CORS limitations |
 
 The selection helper temporarily clears the clipboard and only restores plain text if copying fails. Rich clipboard content may be lost. Use normal ⌘C when preserving image/rich-text clipboard data matters.
+
+## Toward inline checking while typing
+
+The automatic mode in this release runs after a copy or the selection shortcut. Grammarly-style underlines while typing require another integration. A practical first step is a browser extension that observes editable fields, waits until typing pauses, sends a short sentence to the local Ollama service through a restricted bridge, and applies an accepted edit at the recorded caret position. Chrome [content scripts](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts) can interact with page content. For native Mac apps, a separate Accessibility integration could inspect selected text where an app exposes it, but support and edit behavior vary by app; Apple's [selected-text accessibility API](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/accessibilityselectedtext%28%29) is one building block. Neither integration exists in this repository yet.
 
 ## Code map and contributing
 

@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_CONFIG = {
   url: 'http://localhost:11434',
   model: 'qwen3:1.7b',
+  autoSuggestOnCopy: true,
   systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
 };
 const ACTIONS = {
@@ -38,6 +39,8 @@ let history = [];
 let lastReplacement = null;
 let isReplacing = false;
 let previousApp = null;
+let sourceText = '';
+let openingWidget = false;
 let suppressClipboardUntil = 0;
 const activeGenerations = new Map();
 
@@ -62,7 +65,7 @@ function sanitizeConfig(candidate = {}) {
   const model = String(candidate.model ?? DEFAULT_CONFIG.model).trim().slice(0, 160);
   const systemPrompt = String(candidate.systemPrompt ?? DEFAULT_CONFIG.systemPrompt).trim().slice(0, 6_000);
   if (!model || !systemPrompt) throw new Error('Model and system prompt are required.');
-  return { url, model, systemPrompt };
+  return { url, model, systemPrompt, autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
 }
 
 async function loadConfig() {
@@ -189,23 +192,31 @@ function positionWidget(window) {
   window.setPosition(Math.round(left), Math.round(top));
 }
 
-function showWidgetWithText(text, focus = false) {
-  const cleanText = String(text ?? '');
-  if (!cleanText.trim()) return;
-  // Recorded before the widget appears, so the later paste-back has a target.
-  captureFrontmostApp();
-  if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
-  const window = createFloatingWidget();
-  pendingText = cleanText;
-  if (!widgetReady) return;
-  positionWidget(window);
-  window.webContents.send('text-selected', cleanText);
+function deliverPendingText(focus = false) {
+  if (!widgetReady || !pendingText || !mainWindow || mainWindow.isDestroyed()) return;
+  positionWidget(mainWindow);
+  mainWindow.webContents.send('text-selected', pendingText);
   pendingText = '';
   if (focus) {
-    window.show();
-    window.focus();
-  } else {
-    window.showInactive();
+    mainWindow.show();
+    mainWindow.focus();
+  } else mainWindow.showInactive();
+}
+
+async function showWidgetWithText(text, focus = false) {
+  const cleanText = String(text ?? '');
+  if (!cleanText.trim() || openingWidget) return;
+  openingWidget = true;
+  try {
+    // Record the source before the widget can take focus.
+    previousApp = await captureFrontmostApp();
+    sourceText = cleanText;
+    if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
+    createFloatingWidget();
+    pendingText = cleanText;
+    deliverPendingText(focus);
+  } finally {
+    openingWidget = false;
   }
 }
 
@@ -312,25 +323,28 @@ async function captureFrontmostApp() {
     if (process.platform === 'darwin') {
       const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true']);
       const bundleId = stdout.trim();
-      if (bundleId && bundleId !== app.getBundleId()) previousApp = { bundleId };
-      return;
+      return bundleId && bundleId !== app.getBundleId() ? { bundleId } : null;
     }
     if (process.platform === 'win32') {
       const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::GetForegroundWindow().ToInt64()`]);
       const handle = stdout.trim();
-      if (handle && handle !== '0') previousApp = { handle };
-      return;
+      return handle && handle !== '0' ? { handle } : null;
     }
     const { stdout } = await execFileAsync('xdotool', ['getactivewindow']);
     const window = stdout.trim();
-    if (window) previousApp = { window };
+    return window ? { window } : null;
   } catch (error) {
     console.error('Could not record the frontmost app:', error);
+    return null;
   }
 }
 
+function sameTarget(left, right) {
+  return !!left && !!right && Object.keys(left).every((key) => left[key] === right[key]);
+}
+
 async function activatePreviousApp() {
-  if (!previousApp) return;
+  if (!previousApp) throw new Error('The original app could not be identified.');
   if (process.platform === 'darwin' && previousApp.bundleId) {
     await execFileAsync('osascript', ['-e', `tell application id "${previousApp.bundleId}" to activate`]);
     return;
@@ -340,6 +354,20 @@ async function activatePreviousApp() {
     return;
   }
   if (previousApp.window) await execFileAsync('xdotool', ['windowactivate', '--sync', previousApp.window]);
+}
+
+async function verifyOriginalSelection() {
+  clipboard.clear();
+  await simulateCommandKey('c');
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await wait(50);
+    const selected = clipboard.readText();
+    if (selected) {
+      if (selected !== sourceText) throw new Error('The original selection changed.');
+      return;
+    }
+  }
+  throw new Error('The original text is no longer selected.');
 }
 
 // Accessibility is granted per signed binary, so a packaged build does not
@@ -361,7 +389,7 @@ async function captureSelectionAndShow({ focus = true, showError = false } = {})
   const previousClipboard = clipboard.readText();
   clipboard.clear();
   try {
-    await captureFrontmostApp();
+    previousApp = await captureFrontmostApp();
     await wait(100);
     await simulateCommandKey('c');
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -435,7 +463,7 @@ function registerIpc() {
   });
   ipcMain.on('widget-ready', () => {
     widgetReady = true;
-    if (pendingText) showWidgetWithText(pendingText);
+    deliverPendingText();
   });
   ipcMain.on('widget:hide', () => mainWindow?.hide());
   ipcMain.on('widget:copy', (_event, text) => writeAssistantClipboard(text));
@@ -444,17 +472,21 @@ function registerIpc() {
     isPasting = true;
     isReplacing = true;
     writeAssistantClipboard(newText);
-    lastReplacement = { expiresAt: Date.now() + 60_000 };
     try {
       assertCanSynthesizeInput();
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
       await activatePreviousApp();
       // Give the target application time to actually take focus.
       await wait(250);
+      if (!sameTarget(previousApp, await captureFrontmostApp())) throw new Error('The original app did not regain focus.');
+      await verifyOriginalSelection();
+      writeAssistantClipboard(newText);
       await simulateCommandKey('v');
+      lastReplacement = { expiresAt: Date.now() + 60_000 };
       return { ok: true };
     } catch (error) {
       console.error('Paste-back failed:', error);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
       if (error.code === 'ACCESSIBILITY_DENIED') {
         return {
           ok: false,
@@ -465,9 +497,10 @@ function registerIpc() {
       return {
         ok: false,
         reason: 'paste',
-        message: 'Could not paste automatically. The suggestion is on your clipboard, so you can paste it manually.'
+        message: `${error.message || 'Could not paste automatically.'} The suggestion is on your clipboard; paste it manually if needed.`
       };
     } finally {
+      if (clipboard.readText() !== String(newText ?? '')) writeAssistantClipboard(newText);
       isReplacing = false;
       setTimeout(() => { isPasting = false; }, 300);
     }
@@ -520,7 +553,7 @@ app.whenReady().then(async () => {
 
   lastClipboardText = clipboard.readText();
   setInterval(() => {
-    if (isPasting || isCapturingCopy || isReplacing || Date.now() < suppressClipboardUntil) return;
+    if (isPasting || isCapturingCopy || isReplacing || openingWidget || Date.now() < suppressClipboardUntil) return;
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;

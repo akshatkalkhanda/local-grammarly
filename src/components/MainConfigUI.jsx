@@ -46,7 +46,7 @@ export default function MainConfigUI({ config, setConfig }) {
   }, []);
 
   const update = (event) => setConfig({ ...config, [event.target.name]: event.target.value });
-  const reset = () => setConfig({ url: DEFAULT_OLLAMA_URL, model: DEFAULT_MODEL, systemPrompt: defaultPrompt });
+  const reset = () => setConfig({ url: DEFAULT_OLLAMA_URL, model: DEFAULT_MODEL, systemPrompt: defaultPrompt, autoSuggestOnCopy: true });
 
   const save = async () => {
     setIsSaving(true);
@@ -96,6 +96,8 @@ export default function MainConfigUI({ config, setConfig }) {
       </section>
 
       <section className="settings-card"><div className="settings-card-heading"><div><h2>Writing instructions</h2><p>These rules are included with every local request.</p></div></div><label className="settings-field"><span>System prompt</span><textarea name="systemPrompt" value={config.systemPrompt} onChange={update} rows={6} /></label></section>
+
+      <section className="settings-card"><div className="settings-card-heading"><div><h2>Automatic suggestions</h2><p>Run grammar correction when new copied text opens the assistant. You still review and choose whether to replace it.</p></div></div><label className="settings-field auto-suggest-toggle"><span><input type="checkbox" name="autoSuggestOnCopy" checked={config.autoSuggestOnCopy !== false} onChange={(event) => setConfig({ ...config, autoSuggestOnCopy: event.target.checked })} /> Suggest grammar fixes after copying text</span></label></section>
 
       <section className="settings-card history-card"><div className="settings-card-heading"><div><h2><Clock3 size={15} />Local history</h2><p>Your last 30 completed suggestions are stored only on this device.</p></div>{history.length > 0 && <button className="text-button danger" onClick={clearHistory}><Trash2 size={14} />Clear history</button>}</div>{history.length ? <div className="history-list">{history.slice(0, 5).map((item) => <article className="history-item" key={item.id}><div><strong>{item.action} · {item.tone}</strong><span>{item.suggestion}</span></div><button className="icon-button" onClick={() => copyHistoryItem(item.suggestion)} title="Copy suggestion"><Clipboard size={15} /></button></article>)}</div> : <p className="history-empty">Completed suggestions will appear here. After replacing text, use the tray menu’s “Undo last replacement” within one minute.</p>}</section>
 

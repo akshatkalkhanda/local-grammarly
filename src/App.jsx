@@ -6,6 +6,7 @@ import { DEFAULT_OLLAMA_URL, DEFAULT_MODEL } from './OllamaService';
 const defaultConfig = {
   url: DEFAULT_OLLAMA_URL,
   model: DEFAULT_MODEL,
+  autoSuggestOnCopy: true,
   systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
 };
 

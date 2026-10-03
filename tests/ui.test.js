@@ -86,6 +86,31 @@ test('changing selection discards old chunks and final responses while a new req
   assert.equal(ui.button('Replace text').disabled, false);
 });
 
+test('automatic grammar checking starts on copy and still requires review before replacement', async (t) => {
+  const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: true } });
+  await ui.select('They is here.');
+  assert.equal(ui.requests.length, 1);
+  assert.ok(ui.button('Cancel generation'));
+  await act(async () => ui.requests[0].resolve('They are here.'));
+  assert.equal(ui.button('Replace text').disabled, false);
+});
+
+test('automatic grammar checking can be disabled', async (t) => {
+  const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: false } });
+  await ui.select('They is here.');
+  assert.equal(ui.requests.length, 0);
+  assert.ok(document.querySelector('.widget-trigger'));
+});
+
+test('failed replacement keeps the suggestion available and explains manual paste', async (t) => {
+  const ui = await mount(t, Widget, { api: { replaceText: async () => ({ ok: false, message: 'Selection changed. Paste manually.' }) } });
+  await ui.select('They is here.'); await ui.expand(); await ui.click('Correct');
+  await act(async () => ui.requests[0].resolve('They are here.'));
+  await ui.click('Replace text');
+  assert.ok(document.body.textContent.includes('Selection changed. Paste manually.'));
+  assert.ok(ui.button('Replace text'));
+});
+
 test('Cancel clears partial output and permits another request immediately', async (t) => {
   const ui = await mount(t);
   await ui.select('Please edit'); await ui.expand(); await ui.click('Correct');
