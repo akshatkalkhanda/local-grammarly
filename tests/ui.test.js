@@ -186,3 +186,26 @@ test('a late model lookup does not overwrite a newer result', async (t) => {
   assert.ok(document.querySelector('option[value="new-model"]'));
   assert.equal(document.querySelector('option[value="stale-model"]'), null);
 });
+
+test('Settings displays and saves app and website exclusions', async (t) => {
+  let saved;
+  const settings = { ...config, excludedApps: ['terminal', 'iterm2'], excludedWebsites: ['example.com'] };
+  const ui = await mount(t, Settings, {
+    config: settings,
+    api: { saveConfig: async (value) => { saved = value; return value; } }
+  });
+  assert.equal(document.querySelector('[name="excludedApps"]').value, 'terminal\niterm2');
+  assert.equal(document.querySelector('[name="excludedWebsites"]').value, 'example.com');
+  await ui.click('Save settings');
+  assert.deepEqual(saved.excludedApps, ['terminal', 'iterm2']);
+  assert.deepEqual(saved.excludedWebsites, ['example.com']);
+  assert.match(document.body.textContent, /Saved securely/);
+});
+
+test('Restore defaults clears both exclusion lists', async (t) => {
+  let reset;
+  const ui = await mount(t, Settings, { setConfig: value => { reset = value; } });
+  await ui.click('Restore defaults');
+  assert.deepEqual(reset.excludedApps, []);
+  assert.deepEqual(reset.excludedWebsites, []);
+});
