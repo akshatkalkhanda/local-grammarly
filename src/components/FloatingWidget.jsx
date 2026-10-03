@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loader2, Minimize2, RefreshCw, Sparkles, WandSparkles, X } from 'lucide-react';
 import DiffView from './DiffView';
+import BrandMark from './BrandMark';
 import { OllamaService } from '../OllamaService';
 
 const actions = [
@@ -166,7 +167,7 @@ export default function FloatingWidget({ config }) {
   return (
     <main className="widget-shell" aria-live="polite">
       <header className="widget-header">
-        <div className="widget-brand"><span className="brand-mark"><Sparkles size={14} /></span>AI Editor</div>
+        <div className="widget-brand"><BrandMark className="brand-mark" />AI Editor</div>
         <div className="widget-header-actions">
           {suggestion && !isGenerating
             ? <button className="icon-button" onClick={returnToActions} title="Back to writing actions" aria-label="Back to writing actions"><ChevronLeft size={17} /></button>
