@@ -17,6 +17,7 @@ function getDesktopApi() {
 
 export default function FloatingWidget({ config }) {
   const [selectedText, setSelectedText] = useState('');
+  const [selectionId, setSelectionId] = useState(null);
   const [suggestion, setSuggestion] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeAction, setActiveAction] = useState('grammar');
@@ -39,12 +40,14 @@ export default function FloatingWidget({ config }) {
       setSelectedText('Select text in any app, copy it, then choose a writing action.');
       return undefined;
     }
-    const removeListener = desktop.onTextSelected((text) => {
+    const removeListener = desktop.onTextSelected((selection) => {
+      const text = typeof selection === 'string' ? selection : selection.text;
       requestVersion.current += 1;
       generationActive.current = false;
       desktop.cancelGeneration();
       setIsGenerating(false);
       setSelectedText(text);
+      setSelectionId(typeof selection === 'string' ? null : selection.selectionId);
       setSuggestion('');
       setNotice('');
       setIsExpanded(config.autoSuggestOnCopy === true);
@@ -140,7 +143,7 @@ export default function FloatingWidget({ config }) {
     setIsReplacing(true);
     setNotice('');
     try {
-      const result = await desktop.replaceText(suggestion);
+      const result = await desktop.replaceText({ suggestion, original: selectedText, selectionId });
       if (result?.ok) dismiss();
       else setNotice(result?.message ?? 'Could not paste automatically. The suggestion is on your clipboard.');
     } catch (error) {

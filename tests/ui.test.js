@@ -66,7 +66,7 @@ async function mount(t, Component = Widget, props = {}) {
   const button = (label) => [...document.querySelectorAll('button')].find(element => element.textContent.includes(label));
   return {
     requests, button, get cancels() { return cancels; },
-    async select(text) { await act(async () => selection(text)); },
+    async select(text) { await act(async () => selection({ text, selectionId: requests.length + 1 })); },
     async expand() { await act(async () => document.querySelector('.widget-trigger').click()); },
     async click(label) { assert.ok(button(label), `Missing button: ${label}`); await act(async () => button(label).click()); }
   };
@@ -109,6 +109,15 @@ test('failed replacement keeps the suggestion available and explains manual past
   await ui.click('Replace text');
   assert.ok(document.body.textContent.includes('Selection changed. Paste manually.'));
   assert.ok(ui.button('Replace text'));
+});
+
+test('Replace sends the text and selection ID used for the suggestion', async (t) => {
+  let request;
+  const ui = await mount(t, Widget, { api: { replaceText: async (value) => { request = value; return { ok: true }; } } });
+  await ui.select('They is here.'); await ui.expand(); await ui.click('Correct');
+  await act(async () => ui.requests[0].resolve('They are here.'));
+  await ui.click('Replace text');
+  assert.deepEqual(request, { suggestion: 'They are here.', original: 'They is here.', selectionId: 1 });
 });
 
 test('Cancel clears partial output and permits another request immediately', async (t) => {

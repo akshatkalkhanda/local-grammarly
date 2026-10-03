@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
 import { activateMacApp, isMacInputPermissionError, parseFrontmostPid, readFrontmostMacApp } from './macos-app.js';
+import { ReplacementError, replaceSelection } from './replacement.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,7 @@ let settingsWindow = null;
 let tray = null;
 let widgetReady = false;
 let pendingText = '';
+let pendingFocus = false;
 let isPasting = false;
 let isCapturingCopy = false;
 let lastClipboardText = '';
@@ -41,6 +43,7 @@ let lastReplacement = null;
 let isReplacing = false;
 let previousApp = null;
 let sourceText = '';
+let selectionId = 0;
 let openingWidget = false;
 let suppressClipboardUntil = 0;
 const activeGenerations = new Map();
@@ -193,15 +196,16 @@ function positionWidget(window) {
   window.setPosition(Math.round(left), Math.round(top));
 }
 
-function deliverPendingText(focus = false) {
+function deliverPendingText() {
   if (!widgetReady || !pendingText || !mainWindow || mainWindow.isDestroyed()) return;
   positionWidget(mainWindow);
-  mainWindow.webContents.send('text-selected', pendingText);
+  mainWindow.webContents.send('text-selected', { text: pendingText, selectionId });
   pendingText = '';
-  if (focus) {
+  if (pendingFocus) {
     mainWindow.show();
     mainWindow.focus();
   } else mainWindow.showInactive();
+  pendingFocus = false;
 }
 
 async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
@@ -212,10 +216,12 @@ async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
     // Record the source before the widget can take focus.
     previousApp = sourceApp ?? await captureFrontmostApp();
     sourceText = cleanText;
+    selectionId += 1;
     if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
     createFloatingWidget();
     pendingText = cleanText;
-    deliverPendingText(focus);
+    pendingFocus = focus;
+    deliverPendingText();
   } finally {
     openingWidget = false;
   }
@@ -355,31 +361,16 @@ function sameTarget(left, right) {
   return false;
 }
 
-async function activatePreviousApp() {
-  if (!previousApp) throw new Error('The original app could not be identified.');
-  if (process.platform === 'darwin' && previousApp.pid) {
-    await activateMacApp(execFileAsync, previousApp.pid);
+async function activateSourceApp(target) {
+  if (process.platform === 'darwin' && target.pid) {
+    await activateMacApp(execFileAsync, target.pid);
     return;
   }
-  if (process.platform === 'win32' && previousApp.handle) {
-    await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::SetForegroundWindow([IntPtr]${previousApp.handle})`]);
+  if (process.platform === 'win32' && target.handle) {
+    await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::SetForegroundWindow([IntPtr]${target.handle})`]);
     return;
   }
-  if (previousApp.window) await execFileAsync('xdotool', ['windowactivate', '--sync', previousApp.window]);
-}
-
-async function verifyOriginalSelection() {
-  clipboard.clear();
-  await simulateCommandKey('c');
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await wait(50);
-    const selected = clipboard.readText();
-    if (selected) {
-      if (selected !== sourceText) throw new Error('The original selection changed.');
-      return;
-    }
-  }
-  throw new Error('The source app did not copy the original text. Keep it selected and check macOS keyboard-control permission.');
+  if (target.window) await execFileAsync('xdotool', ['windowactivate', '--sync', target.window]);
 }
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -469,22 +460,24 @@ function registerIpc() {
   ipcMain.on('widget:hide', () => mainWindow?.hide());
   ipcMain.on('widget:copy', (_event, text) => writeAssistantClipboard(text));
   // Returns a result so the widget can report a failure instead of closing silently.
-  ipcMain.handle('widget:replace-text', async (_event, newText) => {
+  ipcMain.handle('widget:replace-text', async (_event, request) => {
+    const newText = String(request?.suggestion ?? '');
+    if (!newText || request?.selectionId !== selectionId || request?.original !== sourceText) {
+      return { ok: false, reason: 'selection', message: 'This suggestion belongs to an older selection. Copy the current text again.' };
+    }
+    if (isReplacing) return { ok: false, reason: 'busy', message: 'A replacement is already in progress.' };
     isPasting = true;
     isReplacing = true;
-    writeAssistantClipboard(newText);
+    const target = previousApp;
+    const original = sourceText;
     try {
       // Trust status can disagree with the Settings toggle. Verify the actual
       // copy command and selected text below instead of blocking on a preflight boolean.
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
       await wait(100);
-      if (!sameTarget(previousApp, await captureFrontmostApp())) await activatePreviousApp();
-      // Give the target application time to actually take focus.
-      await wait(250);
-      if (!sameTarget(previousApp, await captureFrontmostApp())) throw new Error('The original app did not regain focus.');
-      await verifyOriginalSelection();
-      writeAssistantClipboard(newText);
-      await simulateCommandKey('v');
+      await replaceSelection({ target, original, replacement: newText, clipboard,
+        currentTarget: captureFrontmostApp, activate: activateSourceApp,
+        key: simulateCommandKey, pause: wait, sameTarget });
       lastReplacement = { expiresAt: Date.now() + 60_000 };
       return { ok: true };
     } catch (error) {
@@ -497,13 +490,17 @@ function registerIpc() {
           message: 'macOS blocked keyboard control. Check Device Control and Data Access (or Accessibility) and Automation for the running Electron/AI Editor app, then fully quit and reopen it. The suggestion is on your clipboard.'
         };
       }
+      const permissionMissing = process.platform === 'darwin' && error instanceof ReplacementError
+        && error.reason === 'selection' && !systemPreferences.isTrustedAccessibilityClient(false);
       return {
         ok: false,
-        reason: 'paste',
-        message: `${error.message || 'Could not paste automatically.'} The suggestion is on your clipboard; paste it manually if needed.`
+        reason: permissionMissing ? 'permission' : error.reason ?? 'paste',
+        message: permissionMissing
+          ? 'macOS blocked keyboard control. Allow Accessibility and Automation for the running app, then fully quit and reopen it. The suggestion is on your clipboard.'
+          : `${error.message || 'Could not paste automatically.'} The suggestion is on your clipboard; paste it manually if needed.`
       };
     } finally {
-      if (clipboard.readText() !== String(newText ?? '')) writeAssistantClipboard(newText);
+      writeAssistantClipboard(newText);
       isReplacing = false;
       setTimeout(() => { isPasting = false; }, 300);
     }

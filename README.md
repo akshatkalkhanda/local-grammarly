@@ -2,7 +2,7 @@
 
 A macOS menu-bar writing assistant powered by Ollama. Copy selected text to get an automatic grammar suggestion, review the changes, then copy or replace the selection in your app.
 
-**Status: beta.** This is a standalone desktop assistant. Automatic checking starts when you copy selected text; it does not underline mistakes as you type in every app. AI output and cross-app paste-back need your review.
+**Status: beta.** This is a standalone desktop assistant. With automatic suggestions enabled, checking starts when you copy selected text; it does not underline mistakes as you type in every app. AI output and cross-app paste-back need your review.
 
 ## What you can do
 
@@ -24,7 +24,7 @@ Grammar checking starts automatically on new copied text by default. You can tur
 - [Ollama](https://ollama.com/download/mac) installed and running, with a downloaded text-generation model.
 - Enough RAM and storage for your chosen model. No GPU performance or latency guarantee is made.
 
-Node.js is needed to build from source; a packaged app still needs Ollama and a model, but not a separate Node.js installation.
+Node.js is needed to build from source; a packaged app still needs Ollama and a model, but not a separate Node.js installation. Check `node --version` before `npm ci`; unsupported Node releases may appear to work but are not tested targets.
 
 ## Quick start from source
 
@@ -64,19 +64,19 @@ Keep the terminal running. Look for **AI Editor** in the macOS menu bar: the mai
 
 Open **System Settings → Privacy & Security → Device Control and Data Access** (called **Accessibility** on older macOS versions) and allow the running app. A source/development run may appear as **Electron**; a packaged build appears as **AI Editor**. Fully quit and restart the app after changing this setting; Electron's trust check can retain the earlier status until restart. If macOS separately requests Automation permission for System Events, allow it for the app you are running.
 
-Normal copy detection works without Accessibility permission. The selection shortcut, Replace, and tray Undo need keyboard automation permission.
+Normal copy detection works without Accessibility permission. The selection shortcut, Replace, and tray Undo need keyboard automation permission. If macOS blocks a simulated keystroke, the app reports that specifically. A failed keyboard-control check can also mean that no selection was copied, so verify the selected text before changing permissions.
 
 ## Daily use
 
 1. Select a short passage in TextEdit, Mail, a browser text field, or another app.
-2. Press **⌘C**. The assistant appears near the pointer and starts a grammar suggestion. If you disabled automatic suggestions in Settings, click the sparkle and choose **Correct**.
+2. Press **⌘C**. When **Suggest grammar fixes after copying text** is enabled in Settings, the assistant appears near the pointer and starts a grammar suggestion without another click. If the setting is off, click the sparkle and choose **Correct**. The setting is on by default for new installations; an existing saved setting takes precedence.
 3. Review the result. Red strikethrough shows removals; green highlights show additions. Longer texts fall back to a plain result to keep the UI responsive.
 4. Choose another writing action or tone if needed.
 5. Choose **Copy** for manual pasting, or **Replace text** to attempt paste-back into the source app.
 
 Example custom instructions: “Keep product names unchanged”, “Use British English”, or “Keep it under 80 words”. They guide the model; they are not guaranteed constraints.
 
-**Keep the original selection intact until replacing.** Replace first reactivates the source app and copies the current selection to confirm it still matches the text you submitted. If the app or selection changed, replacement stops, leaves the suggestion on the clipboard, and shows an error. The check cannot distinguish two windows with identical selected text, and it cannot prove that the target accepted the paste command. Use Copy and paste manually when the destination is uncertain.
+**Keep the original selection intact until replacing.** The app binds each suggestion to the copied text and selection ID. Replace restores the source app, copies its current selection using a fresh clipboard marker, and compares it with that original text before sending ⌘V. A stale suggestion, changed or missing selection, lost focus, or blocked keyboard command stops replacement and shows a specific message. On a failed attempt, the suggestion remains on the clipboard for deliberate manual pasting. The check cannot distinguish two windows in the same app with identical selected text, and a successful ⌘V command does not prove that an editor accepted the edit. Use Copy and paste manually when the destination is uncertain.
 
 | Control | Behavior |
 | --- | --- |
@@ -166,6 +166,11 @@ The browser preview is for UI development. It does not provide the desktop clipb
 | Generation times out | Use a shorter passage or smaller model; Cancel lets you retry without waiting |
 | Suggestion reaches output limit | Select a shorter passage; the app will not let you apply the incomplete result |
 | ⌘⇧Space or Replace does nothing | Check Accessibility/Automation permission for the actual running Electron/AI Editor app. Keep the original text selected until you click Replace. On failure, paste manually from the clipboard. |
+| “The selected text changed” | The current selection differs from the text used for this suggestion. Copy the intended text again to generate a new suggestion. |
+| “No selected text was copied” | Reselect the original passage in its app. Some editors clear selection when the assistant takes focus; use Copy for manual pasting in those apps. |
+| “The source app did not regain focus” | Bring the original app forward, reselect and copy the text, then retry. Avoid switching documents while reviewing. |
+| “The source app could not be identified” | Copy again while the source app is active. The assistant refuses to paste without a source-app identity. |
+| “macOS blocked keyboard control” | Allow the running Electron/AI Editor app in Accessibility or Device Control and Data Access, allow System Events Automation if prompted, and fully restart the app. |
 | Permission switch is on but Replace still says access denied | Fully quit and relaunch the development Electron app or packaged AI Editor. Newer versions attempt the copy/paste operation and report an actual macOS automation denial instead of stopping at a preflight trust check. If it still fails, remove and add the exact running app again in Device Control and Data Access. |
 | “The original app could not be identified” | Install a build containing the macOS frontmost-app fix. Quit and reopen AI Editor, copy text again from the source app, then retry. An existing suggestion captured by an older build cannot regain its missing source-app identity. |
 | Popup does not reappear for identical text | Use the menu's clipboard action; automatic detection compares text values |
@@ -175,9 +180,11 @@ The browser preview is for UI development. It does not provide the desktop clipb
 
 The selection helper temporarily clears the clipboard and only restores plain text if copying fails. Rich clipboard content may be lost. Use normal ⌘C when preserving image/rich-text clipboard data matters.
 
-## Toward inline checking while typing
+## Known limitations and inline checking
 
-The automatic mode in this release runs after a copy or the selection shortcut. Grammarly-style underlines while typing require another integration. A practical first step is a browser extension that observes editable fields, waits until typing pauses, sends a short sentence to the local Ollama service through a restricted bridge, and applies an accepted edit at the recorded caret position. Chrome [content scripts](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts) can interact with page content. For native Mac apps, a separate Accessibility integration could inspect selected text where an app exposes it, but support and edit behavior vary by app; Apple's [selected-text accessibility API](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/accessibilityselectedtext%28%29) is one building block. Neither integration exists in this repository yet.
+The practical cross-app automatic flow is **copy → suggestion appears → you review → optional Replace**. It works with apps that expose selected text through normal Copy. Clipboard monitoring cannot see text as you type, and it cannot tell whether a copied passage came from a password field or a document. Disable automatic suggestions in Settings when copying sensitive material; the app still detects copies but waits for you to request generation.
+
+Grammarly-style underlines while typing require app-specific integration. A browser extension can inspect supported web edit fields, while native editors need Accessibility support or their own plugin APIs. Rich editors, secure fields, terminals, remote desktops, and apps that clear selection on focus change may not support automatic paste-back. This project has no browser extension or system-wide typing monitor. Replacement is intentionally never automatic.
 
 ## Code map and contributing
 
