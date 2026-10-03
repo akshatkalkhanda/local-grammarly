@@ -213,6 +213,20 @@ function deliverPendingText() {
   } else {
     if (process.platform === 'darwin') mainWindow.setFocusable(false);
     mainWindow.showInactive();
+    // showInactive avoids focusing the panel, but macOS can still make
+    // Electron the active app. Bring the source back while the always-on-top
+    // panel remains available for mouse review and Replace.
+    if (process.platform === 'darwin' && previousApp?.pid) {
+      const target = previousApp;
+      setTimeout(async () => {
+        if (!mainWindow?.isVisible() || isReplacing) return;
+        try {
+          if (!sameTarget(target, await captureFrontmostApp())) await activateSourceApp(target);
+        } catch (error) {
+          console.error('Could not restore the source app after showing the widget:', error);
+        }
+      }, 0);
+    }
   }
   pendingFocus = false;
 }
