@@ -1,3 +1,4 @@
+import { normalizeExclusions, shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -16,6 +17,8 @@ const DEFAULT_CONFIG = {
   url: 'http://localhost:11434',
   model: 'qwen3:1.7b',
   autoSuggestOnCopy: true,
+  excludedApps: [],
+  excludedWebsites: [],
   systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
 };
 const ACTIONS = {
@@ -46,6 +49,7 @@ let sourceText = '';
 let selectionId = 0;
 let openingWidget = false;
 let suppressClipboardUntil = 0;
+let checkingExclusions = false;
 const activeGenerations = new Map();
 
 const TONES = {
@@ -69,7 +73,7 @@ function sanitizeConfig(candidate = {}) {
   const model = String(candidate.model ?? DEFAULT_CONFIG.model).trim().slice(0, 160);
   const systemPrompt = String(candidate.systemPrompt ?? DEFAULT_CONFIG.systemPrompt).trim().slice(0, 6_000);
   if (!model || !systemPrompt) throw new Error('Model and system prompt are required.');
-  return { url, model, systemPrompt, autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
+  return { url, model, systemPrompt, excludedApps: normalizeExclusions(candidate.excludedApps), excludedWebsites: normalizeExclusions(candidate.excludedWebsites, true), autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
 }
 
 async function loadConfig() {
@@ -582,13 +586,27 @@ app.whenReady().then(async () => {
   tray.on('double-click', createSettingsWindow);
 
   lastClipboardText = clipboard.readText();
-  setInterval(() => {
-    if (isPasting || isCapturingCopy || isReplacing || openingWidget || Date.now() < suppressClipboardUntil) return;
+  setInterval(async () => {
+    if (checkingExclusions || isPasting || isCapturingCopy || isReplacing || openingWidget || Date.now() < suppressClipboardUntil) return;
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;
     if (BrowserWindow.getFocusedWindow()) return;
-    showWidgetWithText(currentText);
+    checkingExclusions = true;
+    try {
+      const source = await captureFrontmostApp();
+      const suppress = await shouldSuppressPopup(config, source,
+        (target, kind) => readBrowserUrl(execFileAsync, target, kind));
+      // A URL lookup may take time or display a macOS permission prompt. Never
+      // deliver stale clipboard content or restore focus to a departed app.
+      if (suppress || clipboard.readText() !== currentText || BrowserWindow.getFocusedWindow()
+          || isPasting || isReplacing || !sameTarget(source, await captureFrontmostApp())) return;
+      await showWidgetWithText(currentText, false, source);
+    } catch (error) {
+      console.error('Could not check popup exclusions:', error);
+    } finally {
+      checkingExclusions = false;
+    }
   }, 150);
 
   globalShortcut.register('CommandOrControl+Shift+Space', () => captureSelectionAndShow({ showError: true }));

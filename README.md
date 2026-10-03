@@ -207,3 +207,13 @@ See [REVIEW.md](REVIEW.md) for review findings, remaining limitations, suggested
 Created by **Akshat Kalkhanda** — [akshatkalkhanda@gmail.com](mailto:akshatkalkhanda@gmail.com).
 
 There is currently no LICENSE file in the repository. The owner should choose a license before presenting this as an open-source distribution with reuse permissions.
+
+### Exclude apps and websites from popups
+
+Open the menu bar icon → **Settings → Popup exclusions**. Enter one exact app name or bundle ID per line (for example `Terminal`, `iTerm2`, or `com.apple.Terminal`). Enter website domains such as `example.com` or `mail.google.com` in the website list, then click **Save settings**. Remove a line and save to enable that source again. Exclusions persist across restarts. Restore defaults clears both lists.
+
+Domains include their subdomains. Pasting a full URL excludes its entire domain, not just that page. Exclusions suppress automatic clipboard popups before generation; the tray's **Open assistant for clipboard** and the selection shortcut remain available on demand.
+
+App identification and website filtering are macOS features. Safari and supported Chromium browsers (Chrome, Edge, Brave, Vivaldi, Opera and Arc) expose their active tab through Apple Events. macOS may ask you to allow AI Editor/Electron to control the browser; allow this under **Privacy & Security → Automation** for website filtering. With a nonempty website list, automatic popups are suppressed in these browsers if the URL is unavailable or permission is denied, and in Firefox, which does not expose its tab this way. Other browsers and embedded web views cannot reliably be filtered by domain: exclude their whole app instead. URLs are used locally for matching and are not stored or sent to Ollama.
+
+The clipboard does not identify its source: the app samples the foreground app when it notices a clipboard change. Switching tabs/apps immediately after copying can make attribution unreliable. This feature controls popup convenience; it is not a security boundary for clipboard contents.
