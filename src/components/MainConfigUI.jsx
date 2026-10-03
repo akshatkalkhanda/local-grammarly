@@ -47,7 +47,7 @@ export default function MainConfigUI({ config, setConfig }) {
   }, []);
 
   const update = (event) => setConfig({ ...config, [event.target.name]: event.target.value });
-  const reset = () => setConfig({ url: DEFAULT_OLLAMA_URL, model: DEFAULT_MODEL, systemPrompt: defaultPrompt, autoSuggestOnCopy: true, excludedApps: [], excludedWebsites: [] });
+  const reset = () => setConfig({ url: DEFAULT_OLLAMA_URL, model: DEFAULT_MODEL, systemPrompt: defaultPrompt, autoSuggestOnCopy: true, presets: [], excludedApps: [], excludedWebsites: [] });
 
   const save = async () => {
     setIsSaving(true);
@@ -107,6 +107,17 @@ export default function MainConfigUI({ config, setConfig }) {
         <label className="settings-field"><span>Excluded websites</span><textarea name="excludedWebsites" rows={4} value={Array.isArray(config.excludedWebsites) ? config.excludedWebsites.join('\n') : config.excludedWebsites ?? ''} onChange={update} placeholder={'example.com\nmail.google.com'} /></label>
         <p className="field-help">One domain per line; subdomains are included. URLs are saved as domains, covering the entire site.</p>
         <p className="field-help">Website filtering supports Safari and Chromium browsers on macOS and may request Automation permission. With website exclusions saved, unreadable tabs and Firefox suppress automatic popups. Other browsers and embedded web views may require excluding the whole app.</p>
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-card-heading"><div><h2>Custom writing presets</h2><p>Save reusable instructions, then choose a preset in the assistant before running a writing action.</p></div></div>
+        {(config.presets ?? []).map((preset, index) => <div className="preset-editor" key={preset.id}>
+          <label className="settings-field"><span>Preset {index + 1} name</span><input aria-label={`Preset ${index + 1} name`} value={preset.name} maxLength={60} placeholder="Friendly work message" onChange={event => setConfig({ ...config, presets: config.presets.map(item => item.id === preset.id ? { ...item, name: event.target.value } : item) })} /></label>
+          <label className="settings-field"><span>Instructions</span><textarea aria-label={`Preset ${index + 1} instructions`} rows={3} value={preset.instruction} maxLength={500} placeholder="Make this warm, clear and professional. Keep it brief and preserve all facts." onChange={event => setConfig({ ...config, presets: config.presets.map(item => item.id === preset.id ? { ...item, instruction: event.target.value } : item) })} /></label>
+          <button className="text-button danger" aria-label={`Remove preset ${index + 1}`} onClick={() => setConfig({ ...config, presets: config.presets.filter(item => item.id !== preset.id) })}><Trash2 size={14} />Remove preset</button>
+        </div>)}
+        <button className="secondary-button" disabled={(config.presets ?? []).length >= 20} onClick={() => setConfig({ ...config, presets: [...(config.presets ?? []), { id: crypto.randomUUID(), name: '', instruction: '' }] })}>Add preset</button>
+        <p className="field-help">Up to 20 presets, with 500 characters per instruction. Click Save settings to keep changes. Presets work alongside your chosen tone.</p>
       </section>
 
       <section className="settings-card history-card"><div className="settings-card-heading"><div><h2><Clock3 size={15} />Local history</h2><p>Your last 30 completed suggestions are stored only on this device.</p></div>{history.length > 0 && <button className="text-button danger" onClick={clearHistory}><Trash2 size={14} />Clear history</button>}</div>{history.length ? <div className="history-list">{history.slice(0, 5).map((item) => <article className="history-item" key={item.id}><div><strong>{item.action} · {item.tone}</strong><span>{item.suggestion}</span></div><button className="icon-button" onClick={() => copyHistoryItem(item.suggestion)} title="Copy suggestion"><Clipboard size={15} /></button></article>)}</div> : <p className="history-empty">Completed suggestions will appear here. After replacing text, use the tray menu’s “Undo last replacement” within one minute.</p>}</section>

@@ -79,7 +79,7 @@ export default function FloatingWidget({ config }) {
         ? await desktop.generateStream(action, text, tone, customInstruction, translationTarget, (chunk) => {
           if (version === requestVersion.current) setSuggestion((current) => current + chunk);
         })
-        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}. Tone: ${toneLabels[tone]}. ${tone === 'emojified' ? 'Add a few relevant emojis without replacing words or changing meaning.' : tone === 'neutral' ? 'Do not add new emojis.' : ''}\n${text}`, config.systemPrompt);
+        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}. Tone: ${toneLabels[tone]}. ${tone === 'emojified' ? 'Add a few relevant emojis without replacing words or changing meaning.' : tone === 'neutral' ? 'Do not add new emojis.' : ''}${customInstruction ? `\nAdditional instruction: ${customInstruction}` : ''}\n${text}`, config.systemPrompt);
       if (version !== requestVersion.current) return;
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
@@ -184,6 +184,7 @@ export default function FloatingWidget({ config }) {
           <div className="writing-controls">
             <label>Tone<select value={tone} onChange={(event) => setTone(event.target.value)} disabled={isGenerating}>{Object.entries(toneLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Translate to<select value={translationTarget} onChange={(event) => setTranslationTarget(event.target.value)} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
+            {(config.presets ?? []).length > 0 && <label className="preset-picker">Writing preset<select aria-label="Writing preset" value={(config.presets ?? []).find(preset => preset.instruction === customInstruction)?.id ?? ''} onChange={event => setCustomInstruction((config.presets ?? []).find(preset => preset.id === event.target.value)?.instruction ?? '')} disabled={isGenerating}><option value="">No preset / custom</option>{config.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>}
             <input className="custom-instruction" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} onClick={async (event) => {
               const input = event.currentTarget;
               await getDesktopApi()?.focusWidget?.();
