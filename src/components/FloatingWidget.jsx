@@ -168,7 +168,7 @@ export default function FloatingWidget({ config }) {
 
   return (
     <main className="widget-shell" aria-live="polite">
-      <header className="widget-header">
+      <header className="widget-header" title="Drag to move the assistant">
         <div className="widget-brand"><BrandMark className="brand-mark" />AI Editor</div>
         <div className="widget-header-actions">
           {suggestion && !isGenerating

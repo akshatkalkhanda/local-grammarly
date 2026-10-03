@@ -31,6 +31,7 @@ async function componentModule(url) {
 }
 const { default: Widget } = await import(await componentModule(new URL('../src/components/FloatingWidget.jsx', import.meta.url)));
 const { default: Settings } = await import(await componentModule(new URL('../src/components/MainConfigUI.jsx', import.meta.url)));
+const { default: App } = await import(await componentModule(new URL('../src/App.jsx', import.meta.url)));
 const config = { url: 'http://localhost:11434', model: 'missing-model', systemPrompt: 'Edit text.' };
 
 function deferred() {
@@ -265,4 +266,19 @@ test('Settings adds, removes and saves presets', async (t) => {
   assert.equal(document.querySelector('[aria-label="Preset 2 name"]'), null);
   await ui.click('Save settings');
   assert.deepEqual(saved.presets, [{ id: 'work', name: 'Work', instruction: 'Be brief.' }]);
+});
+
+
+test('settings waits for disk-backed config instead of exposing writable defaults', async t => {
+  const loading = deferred();
+  await mount(t, App, { api: { getConfig: () => loading.promise, onConfigUpdated: () => () => {} } });
+  await act(async () => {
+    window.location.hash = '#settings';
+    window.dispatchEvent(new window.Event('hashchange'));
+  });
+  assert.match(document.body.textContent, /Loading saved settings/);
+  assert.equal(document.querySelector('[name="excludedApps"]'), null);
+  await act(async () => loading.resolve({ ...config, excludedApps: ['iterm2'], excludedWebsites: ['example.com'] }));
+  assert.equal(document.querySelector('[name="excludedApps"]').value, 'iterm2');
+  assert.equal(document.querySelector('[name="excludedWebsites"]').value, 'example.com');
 });

@@ -8,7 +8,7 @@ button:disabled { cursor: wait; opacity: .65; }
 
 .widget-trigger { width: 34px; height: 34px; margin: 10px; border: 1px solid #d8e5df; border-radius: 50%; display: grid; place-items: center; color: #137a52; background: #fff; box-shadow: 0 5px 16px rgb(25 52 42 / 18%); transition: transform .16s ease, box-shadow .16s ease; }
 .widget-trigger:hover { transform: translateY(-1px) scale(1.04); box-shadow: 0 8px 20px rgb(25 52 42 / 24%); }
-.widget-shell { max-height: calc(100vh - 20px); margin: 10px; overflow: auto; color: #172b25; background: #fff; border: 1px solid #dce8e2; border-radius: 14px; box-shadow: 0 12px 34px rgb(20 47 37 / 20%); animation: widget-enter .18s ease-out; }
+.widget-shell { max-height: calc(100vh - 20px); margin: 10px; overflow: auto; color: #172b25; background: #fff; border: 0; border-radius: 14px; box-shadow: 0 2px 8px rgb(20 47 37 / 12%); animation: widget-enter .18s ease-out; }
 @keyframes widget-enter { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
 .widget-header { min-height: 48px; padding: 10px 12px 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5eeea; }
 .widget-header-actions { display: flex; align-items: center; gap: 2px; }
@@ -92,3 +92,6 @@ button:disabled { cursor: wait; opacity: .65; }
 
 .preset-editor { padding: 14px 0; border-bottom: 1px solid var(--border-color, #e2e8f0); margin-bottom: 14px; }
 .writing-controls .preset-picker { grid-column: 1 / -1; }
+
+.widget-header { -webkit-app-region: drag; app-region: drag; user-select: none; cursor: grab; }
+.widget-header-actions, .widget-header button { -webkit-app-region: no-drag; app-region: no-drag; cursor: pointer; }
