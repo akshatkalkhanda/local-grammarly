@@ -78,6 +78,8 @@ Example custom instructions: “Keep product names unchanged”, “Use British 
 
 **Keep the original selection intact until replacing.** The app binds each suggestion to the copied text and selection ID. Replace restores the source app, copies its current selection using a fresh clipboard marker, and compares it with that original text before sending ⌘V. A stale suggestion, changed or missing selection, lost focus, or blocked keyboard command stops replacement and shows a specific message. On a failed attempt, the suggestion remains on the clipboard for deliberate manual pasting. The check cannot distinguish two windows in the same app with identical selected text, and a successful ⌘V command does not prove that an editor accepted the edit. Use Copy and paste manually when the destination is uncertain.
 
+On macOS, a popup opened by copying stays nonfocusable so clicking its writing actions or Replace does not take keyboard focus from the source editor. Clicking the custom-instruction field explicitly focuses AI Editor so you can type; some source apps may then clear their selection. If Replace reports a missing selection after editing instructions, use Copy and paste the suggestion yourself.
+
 | Control | Behavior |
 | --- | --- |
 | ⌘⇧Space | Attempts to copy the current selection, open the assistant, and start grammar checking when automatic suggestions are enabled |

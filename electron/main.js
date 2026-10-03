@@ -129,6 +129,11 @@ function createFloatingWidget() {
     show: false,
     frame: false,
     transparent: true,
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+    // A copied-text popup must not steal keyboard focus from the editor. On
+    // macOS, activating this window can clear a web editor's selection.
+    focusable: process.platform !== 'darwin',
+    acceptFirstMouse: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
@@ -202,9 +207,13 @@ function deliverPendingText() {
   mainWindow.webContents.send('text-selected', { text: pendingText, selectionId });
   pendingText = '';
   if (pendingFocus) {
+    if (process.platform === 'darwin') mainWindow.setFocusable(true);
     mainWindow.show();
     mainWindow.focus();
-  } else mainWindow.showInactive();
+  } else {
+    if (process.platform === 'darwin') mainWindow.setFocusable(false);
+    mainWindow.showInactive();
+  }
   pendingFocus = false;
 }
 
@@ -458,6 +467,11 @@ function registerIpc() {
     deliverPendingText();
   });
   ipcMain.on('widget:hide', () => mainWindow?.hide());
+  ipcMain.handle('widget:focus', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (process.platform === 'darwin') mainWindow.setFocusable(true);
+    mainWindow.focus();
+  });
   ipcMain.on('widget:copy', (_event, text) => writeAssistantClipboard(text));
   // Returns a result so the widget can report a failure instead of closing silently.
   ipcMain.handle('widget:replace-text', async (_event, request) => {

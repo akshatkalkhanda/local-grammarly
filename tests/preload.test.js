@@ -9,6 +9,7 @@ function harness() {
   const ipc = new EventEmitter();
   const sent = [];
   ipc.send = (channel, payload) => sent.push({ channel, payload });
+  ipc.invoke = async (channel) => { sent.push({ channel }); };
   runInNewContext(readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8'), {
     require: () => ({ ipcRenderer: ipc, contextBridge: { exposeInMainWorld: (_name, value) => { api = value; } } })
   });
@@ -41,4 +42,10 @@ test('Cancel reaches the main process', () => {
   const { api, sent } = harness();
   api.cancelGeneration();
   assert.equal(sent[0].channel, 'ollama:cancel');
+});
+
+test('custom instruction can explicitly focus the otherwise inactive popup', async () => {
+  const { api, sent } = harness();
+  await api.focusWidget();
+  assert.equal(sent[0].channel, 'widget:focus');
 });
