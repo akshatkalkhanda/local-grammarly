@@ -1,5 +1,18 @@
 # Repository review — 3 October 2026
 
+## Follow-up: safer Replace and automatic suggestion flow
+
+This branch starts from `48d93d7` on the latest fetched `main` at the time of the change.
+
+- Replace now carries the copied text and selection ID with the suggestion. The main process rejects a result tied to an older selection before touching the clipboard or sending a paste.
+- The paste-back check restores the source app, waits for its focus, writes a unique clipboard marker, sends Copy, then requires an exact match with the original text before Paste. A changed or empty selection and lost focus have separate messages. macOS keyboard-control denials are reported separately.
+- The widget now remembers whether a pending selection should open with focus while its renderer is loading. Automatic grammar generation still starts on new copied text when the saved setting is enabled; this is the practical cross-app trigger, not live typing integration.
+- Focused tests exercise replacement against a disposable in-memory text field for success, changed selection, empty selection, lost focus, and permission denial. They do not simulate a native editor's Accessibility behavior.
+
+Native smoke testing on this Mac showed a popup and generated suggestions from disposable TextEdit text. Replace refused to paste when the source-app identity was unavailable; the TextEdit selection remained intact. The session did **not** verify a successful native replacement or the distinct native error paths for changed selection, lost focus, and denied permission. Repeat those checks on the target Mac before merging. The app intentionally refuses to guess a paste destination when source capture fails.
+
+The existing saved setting on the test machine had automatic suggestions disabled, so the live popup required a click to generate. Automated UI tests cover the enabled path. The README explains the setting and copy-triggered behavior.
+
 Reviewed `main` at `99e212b` and updated the paste-back flow, automatic suggestions, tests, and usage guide. This is still a beta desktop assistant, not a system-wide inline Grammarly replacement.
 
 ## Changes in this update
