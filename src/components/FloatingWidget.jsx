@@ -12,6 +12,8 @@ const actions = [
   { id: 'translate', label: 'Translate', icon: Languages, description: 'English, German or Dutch' }
 ];
 
+const toneLabels = { neutral: 'Normal', emojified: 'Emojified ✨', friendly: 'Friendly', confident: 'Confident', concise: 'Concise', formal: 'Formal' };
+
 function getDesktopApi() {
   return window.electronAPI ?? null;
 }
@@ -77,7 +79,7 @@ export default function FloatingWidget({ config }) {
         ? await desktop.generateStream(action, text, tone, customInstruction, translationTarget, (chunk) => {
           if (version === requestVersion.current) setSuggestion((current) => current + chunk);
         })
-        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}:\n${text}`, config.systemPrompt);
+        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}. Tone: ${toneLabels[tone]}. ${tone === 'emojified' ? 'Add a few relevant emojis without replacing words or changing meaning.' : tone === 'neutral' ? 'Do not add new emojis.' : ''}\n${text}`, config.systemPrompt);
       if (version !== requestVersion.current) return;
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
@@ -180,7 +182,7 @@ export default function FloatingWidget({ config }) {
         <section className="action-panel">
           <p className="selection-summary"><strong>{wordCount} words selected</strong><span>{selectedText.slice(0, 92)}{selectedText.length > 92 ? '…' : ''}</span></p>
           <div className="writing-controls">
-            <label>Tone<select value={tone} onChange={(event) => setTone(event.target.value)} disabled={isGenerating}><option value="neutral">Natural</option><option value="friendly">Friendly</option><option value="confident">Confident</option><option value="concise">Concise</option><option value="formal">Formal</option></select></label>
+            <label>Tone<select value={tone} onChange={(event) => setTone(event.target.value)} disabled={isGenerating}>{Object.entries(toneLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Translate to<select value={translationTarget} onChange={(event) => setTranslationTarget(event.target.value)} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
             <input className="custom-instruction" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} onClick={async (event) => {
               const input = event.currentTarget;
@@ -200,7 +202,7 @@ export default function FloatingWidget({ config }) {
         </section>
       ) : (
         <section className="suggestion-panel">
-          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
+          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${toneLabels[tone] ?? tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
           {suggestion
             ? <>
               <DiffView originalText={selectedText} correctedText={suggestion} />

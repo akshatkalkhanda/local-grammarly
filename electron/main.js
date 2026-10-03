@@ -53,7 +53,8 @@ let checkingExclusions = false;
 const activeGenerations = new Map();
 
 const TONES = {
-  neutral: 'Use a natural, clear, and neutral tone.',
+  neutral: 'Use a natural, clear, and neutral tone. Do not add new emojis.',
+  emojified: 'Use a natural, friendly tone and add one to three contextually relevant emojis where appropriate. Keep all words readable; never replace words with emojis. Preserve the original meaning, facts, names, links, and code. Avoid emoji overload, and do not add playful emojis to serious or sensitive messages.',
   friendly: 'Use a warm, friendly, and approachable tone.',
   confident: 'Use a confident, direct, and decisive tone.',
   concise: 'Use a concise tone and remove unnecessary words.',

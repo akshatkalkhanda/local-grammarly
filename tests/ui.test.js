@@ -53,7 +53,7 @@ async function mount(t, Component = Widget, props = {}) {
     cancelGeneration() { cancels += 1; },
     hideWidget() { hides += 1; },
     generateStream(_action, _text, _tone, _instruction, _target, onChunk) {
-      const request = { ...deferred(), onChunk };
+      const request = { ...deferred(), onChunk, tone: _tone };
       requests.push(request);
       return request.promise;
     },
@@ -208,4 +208,22 @@ test('Restore defaults clears both exclusion lists', async (t) => {
   await ui.click('Restore defaults');
   assert.deepEqual(reset.excludedApps, []);
   assert.deepEqual(reset.excludedWebsites, []);
+});
+
+
+test('Normal is the default and Emojified is sent to generation when selected', async (t) => {
+  const ui = await mount(t);
+  await ui.select('We finished the release.'); await ui.expand();
+  const select = [...document.querySelectorAll('select')].find(element => element.querySelector('option[value="emojified"]'));
+  assert.equal(select.value, 'neutral');
+  assert.equal(select.selectedOptions[0].textContent, 'Normal');
+  await act(async () => {
+    select.value = 'emojified';
+    select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  await ui.click('Improve');
+  assert.equal(ui.requests[0].tone, 'emojified');
+  await act(async () => ui.requests[0].resolve('We finished the release! 🎉'));
+  assert.ok(document.body.textContent.includes('Emojified ✨'));
+  assert.equal(ui.button('Replace text').disabled, false);
 });
