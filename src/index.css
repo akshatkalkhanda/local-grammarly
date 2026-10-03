@@ -89,3 +89,6 @@ button:disabled { cursor: wait; opacity: .65; }
 .history-item > div { min-width: 0; flex: 1; display: grid; gap: 3px; }.history-item strong { color: #476257; font-size: 10px; text-transform: capitalize; }.history-item span { overflow: hidden; color: #253d32; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .history-empty { margin: 0; color: #6a8176; font-size: 12px; line-height: 1.55; }
 @media (max-width: 500px) { .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.settings-page { padding: 28px 20px; }.settings-card-heading { display: grid; }.connection-status { width: max-content; } }
+
+.preset-editor { padding: 14px 0; border-bottom: 1px solid var(--border-color, #e2e8f0); margin-bottom: 14px; }
+.writing-controls .preset-picker { grid-column: 1 / -1; }

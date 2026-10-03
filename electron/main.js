@@ -1,3 +1,4 @@
+import { sanitizePresets } from './presets.js';
 import { normalizeExclusions, shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
 import { execFile } from 'child_process';
@@ -17,6 +18,7 @@ const DEFAULT_CONFIG = {
   url: 'http://localhost:11434',
   model: 'qwen3:1.7b',
   autoSuggestOnCopy: true,
+  presets: [],
   excludedApps: [],
   excludedWebsites: [],
   systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
@@ -74,7 +76,7 @@ function sanitizeConfig(candidate = {}) {
   const model = String(candidate.model ?? DEFAULT_CONFIG.model).trim().slice(0, 160);
   const systemPrompt = String(candidate.systemPrompt ?? DEFAULT_CONFIG.systemPrompt).trim().slice(0, 6_000);
   if (!model || !systemPrompt) throw new Error('Model and system prompt are required.');
-  return { url, model, systemPrompt, excludedApps: normalizeExclusions(candidate.excludedApps), excludedWebsites: normalizeExclusions(candidate.excludedWebsites, true), autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
+  return { url, model, systemPrompt, presets: sanitizePresets(candidate.presets), excludedApps: normalizeExclusions(candidate.excludedApps), excludedWebsites: normalizeExclusions(candidate.excludedWebsites, true), autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
 }
 
 async function loadConfig() {

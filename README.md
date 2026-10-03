@@ -221,3 +221,9 @@ The clipboard does not identify its source: the app samples the foreground app w
 ### Writing tones
 
 In the assistant's action panel, choose **Normal** for natural writing without added emojis, or **Emojified ✨** for a friendly version with a few relevant emojis. Then choose a writing action such as **Improve**. Emojified asks the model to preserve meaning and words, avoid emoji overload, and keep serious messages appropriate. Friendly, Confident, Concise and Formal remain available. Always review the result before choosing **Replace text**; actual emoji choices depend on your Ollama model.
+
+### Custom writing presets
+
+Open **Settings → Custom writing presets → Add preset**, enter a name and instructions, then **Save settings**. For example, name a preset “Friendly work message” and use “Make this warm, clear and professional. Keep it brief and preserve all facts.” You can edit or remove presets in Settings; changes take effect when saved. Up to 20 presets are stored locally, with 60 characters per name and 500 per instruction. Restore defaults clears presets too.
+
+In the assistant's writing actions, choose **Writing preset**, review or adjust the filled-in custom instruction, select your tone, and click **Improve** or another action. If an automatic suggestion is already displayed, use **Back to writing actions** first. Choosing a preset does not generate or replace text by itself. Choose **No preset / custom** to clear the instruction. The filled-in instruction stays in the widget for subsequent requests during that app session; changing a saved preset does not overwrite an instruction already filled in. Results depend on the local model; review before replacing.

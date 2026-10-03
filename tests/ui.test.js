@@ -53,7 +53,7 @@ async function mount(t, Component = Widget, props = {}) {
     cancelGeneration() { cancels += 1; },
     hideWidget() { hides += 1; },
     generateStream(_action, _text, _tone, _instruction, _target, onChunk) {
-      const request = { ...deferred(), onChunk, tone: _tone };
+      const request = { ...deferred(), onChunk, tone: _tone, instruction: _instruction };
       requests.push(request);
       return request.promise;
     },
@@ -226,4 +226,43 @@ test('Normal is the default and Emojified is sent to generation when selected', 
   await act(async () => ui.requests[0].resolve('We finished the release! 🎉'));
   assert.ok(document.body.textContent.includes('Emojified ✨'));
   assert.equal(ui.button('Replace text').disabled, false);
+});
+
+
+test('a saved preset fills instructions without generating until a writing action is chosen', async (t) => {
+  const preset = { id: 'work', name: 'Friendly work message', instruction: 'Be warm and brief.' };
+  const ui = await mount(t, Widget, { config: { ...config, presets: [preset] } });
+  await ui.select('Please check the release.'); await ui.expand();
+  const picker = document.querySelector('[aria-label="Writing preset"]');
+  await act(async () => {
+    picker.value = 'work';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  assert.equal(document.querySelector('[aria-label="Custom writing instruction"]').value, preset.instruction);
+  assert.equal(ui.requests.length, 0);
+  await ui.click('Improve');
+  assert.equal(ui.requests[0].instruction, preset.instruction);
+  await act(async () => ui.requests[0].resolve('Please check the release when you can.'));
+  await act(async () => document.querySelector('[aria-label="Back to writing actions"]').click());
+  const reset = document.querySelector('[aria-label="Writing preset"]');
+  await act(async () => {
+    reset.value = '';
+    reset.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  assert.equal(document.querySelector('[aria-label="Custom writing instruction"]').value, '');
+});
+
+test('Settings adds, removes and saves presets', async (t) => {
+  let saved;
+  function StatefulSettings() {
+    const [value, setValue] = React.useState({ ...config, presets: [{ id: 'work', name: 'Work', instruction: 'Be brief.' }] });
+    return React.createElement(Settings, { config: value, setConfig: setValue });
+  }
+  const ui = await mount(t, StatefulSettings, { api: { saveConfig: async value => { saved = value; return value; } } });
+  await ui.click('Add preset');
+  assert.ok(document.querySelector('[aria-label="Preset 2 name"]'));
+  await act(async () => document.querySelector('[aria-label="Remove preset 2"]').click());
+  assert.equal(document.querySelector('[aria-label="Preset 2 name"]'), null);
+  await ui.click('Save settings');
+  assert.deepEqual(saved.presets, [{ id: 'work', name: 'Work', instruction: 'Be brief.' }]);
 });
