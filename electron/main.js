@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
+import { activateMacApp, readFrontmostMacApp } from './macos-app.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -203,13 +204,13 @@ function deliverPendingText(focus = false) {
   } else mainWindow.showInactive();
 }
 
-async function showWidgetWithText(text, focus = false) {
+async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
   const cleanText = String(text ?? '');
   if (!cleanText.trim() || openingWidget) return;
   openingWidget = true;
   try {
     // Record the source before the widget can take focus.
-    previousApp = await captureFrontmostApp();
+    previousApp = sourceApp ?? await captureFrontmostApp();
     sourceText = cleanText;
     if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
     createFloatingWidget();
@@ -321,6 +322,14 @@ function simulateCommandKey(key) {
 async function captureFrontmostApp() {
   try {
     if (process.platform === 'darwin') {
+      // NSWorkspace is independent of System Events Automation permission.
+      try {
+        const frontmost = await readFrontmostMacApp(execFileAsync, process.pid);
+        if (frontmost) return frontmost;
+      } catch (error) {
+        console.error('NSWorkspace frontmost-app lookup failed:', error);
+      }
+      // Keep a fallback for environments where JXA cannot query AppKit.
       const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true']);
       const bundleId = stdout.trim();
       return bundleId && bundleId !== app.getBundleId() ? { bundleId } : null;
@@ -340,11 +349,17 @@ async function captureFrontmostApp() {
 }
 
 function sameTarget(left, right) {
-  return !!left && !!right && Object.keys(left).every((key) => left[key] === right[key]);
+  if (!left || !right) return false;
+  if (left.pid && right.pid) return left.pid === right.pid;
+  return !!left.bundleId && left.bundleId === right.bundleId;
 }
 
 async function activatePreviousApp() {
   if (!previousApp) throw new Error('The original app could not be identified.');
+  if (process.platform === 'darwin' && previousApp.pid) {
+    await activateMacApp(execFileAsync, previousApp.pid);
+    return;
+  }
   if (process.platform === 'darwin' && previousApp.bundleId) {
     await execFileAsync('osascript', ['-e', `tell application id "${previousApp.bundleId}" to activate`]);
     return;
@@ -397,7 +412,7 @@ async function captureSelectionAndShow({ focus = true, showError = false } = {})
       const text = clipboard.readText();
       if (text) {
         lastClipboardText = text;
-        showWidgetWithText(text, focus);
+        showWidgetWithText(text, focus, previousApp);
         return;
       }
     }
@@ -475,7 +490,8 @@ function registerIpc() {
     try {
       assertCanSynthesizeInput();
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-      await activatePreviousApp();
+      await wait(100);
+      if (!sameTarget(previousApp, await captureFrontmostApp())) await activatePreviousApp();
       // Give the target application time to actually take focus.
       await wait(250);
       if (!sameTarget(previousApp, await captureFrontmostApp())) throw new Error('The original app did not regain focus.');

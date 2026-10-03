@@ -166,6 +166,7 @@ The browser preview is for UI development. It does not provide the desktop clipb
 | Generation times out | Use a shorter passage or smaller model; Cancel lets you retry without waiting |
 | Suggestion reaches output limit | Select a shorter passage; the app will not let you apply the incomplete result |
 | ⌘⇧Space or Replace does nothing | Check Accessibility/Automation permission for the actual running Electron/AI Editor app. Keep the original text selected until you click Replace. On failure, paste manually from the clipboard. |
+| “The original app could not be identified” | Install a build containing the macOS frontmost-app fix. Quit and reopen AI Editor, copy text again from the source app, then retry. An existing suggestion captured by an older build cannot regain its missing source-app identity. |
 | Popup does not reappear for identical text | Use the menu's clipboard action; automatic detection compares text values |
 | Paste goes to the wrong place | Use manual Copy/paste; preserve the original selection and avoid switching documents. The safeguard compares app identity and selected text, not document identity. |
 | npm reports an unsupported Node version | Check `node --version`; use the supported versions listed above, then rerun `npm ci` |
