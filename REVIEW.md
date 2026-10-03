@@ -4,6 +4,7 @@ Reviewed `main` at `99e212b` and updated the paste-back flow, automatic suggesti
 
 ## Changes in this update
 
+- The System Events fallback now returns the frontmost process's Unix ID and compares it with this app's PID. The previous fallback called nonexistent Electron `app.getBundleId()`, producing repeated console errors when it ran. Target comparison now also recognizes Windows handles and Linux window IDs.
 - After a report showing the macOS permission switch enabled while Electron still returned `ACCESSIBILITY_DENIED`, Replace no longer blocks solely on `isTrustedAccessibilityClient(false)`. It attempts the keyboard operation, verifies the original selection before paste, and classifies actual macOS automation-denial errors. The README now names the macOS 27 settings pane and the restart requirement.
 - After a real macOS error report, source-app identification now uses AppKit's `NSWorkspace.frontmostApplication` through JXA and keeps the process ID. System Events remains a fallback. The selection shortcut preserves its initial source-app capture instead of overwriting it with a later lookup.
 - Wait for source-app capture before showing the widget. Previously that asynchronous capture could finish after the widget took focus and leave an old target in memory.
@@ -60,7 +61,7 @@ For faster suggestions, first measure latency on the user's actual Mac with the 
 ## Validation performed
 
 - Dependency installation completed with the lockfile.
-- 25 regression cases passed: four macOS app and input checks, nine stream/URL checks, three preload IPC checks, and nine React UI checks in jsdom.
+- 26 regression cases passed: five macOS app and input checks, nine stream/URL checks, three preload IPC checks, and nine React UI checks in jsdom.
 - `npm run lint` passed.
 - `npm run build:app` compiled the renderer and Electron main process.
 - Electron Builder packaged `release/mac-arm64/AI Editor.app` after correcting the icon file. DMG creation then failed because this execution environment's `hdiutil` returned `Device not configured`; the DMG is not a validated deliverable from this run.

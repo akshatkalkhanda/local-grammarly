@@ -1,12 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activateMacApp, isMacInputPermissionError, parseFrontmostApp, readFrontmostMacApp } from '../electron/macos-app.js';
+import { activateMacApp, isMacInputPermissionError, parseFrontmostApp, parseFrontmostPid, readFrontmostMacApp } from '../electron/macos-app.js';
 
 test('frontmost app parsing keeps a target process and rejects our own or missing app', () => {
   assert.deepEqual(parseFrontmostApp('{"pid":123,"bundleId":"com.apple.TextEdit"}', 456), { pid: 123, bundleId: 'com.apple.TextEdit' });
   assert.equal(parseFrontmostApp('{"pid":456,"bundleId":"com.example.editor"}', 456), null);
   assert.equal(parseFrontmostApp('{"pid":null}', 456), null);
   assert.equal(parseFrontmostApp('', 456), null);
+});
+
+test('System Events fallback uses a process ID and excludes this app', () => {
+  assert.deepEqual(parseFrontmostPid('123\n', 456), { pid: 123 });
+  assert.equal(parseFrontmostPid('456\n', 456), null);
+  assert.equal(parseFrontmostPid('-1', 456), null);
+  assert.equal(parseFrontmostPid('', 456), null);
 });
 
 test('frontmost app lookup uses AppKit without asking System Events', async () => {

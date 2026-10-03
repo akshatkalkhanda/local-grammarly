@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
-import { activateMacApp, isMacInputPermissionError, readFrontmostMacApp } from './macos-app.js';
+import { activateMacApp, isMacInputPermissionError, parseFrontmostPid, readFrontmostMacApp } from './macos-app.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -330,9 +330,8 @@ async function captureFrontmostApp() {
         console.error('NSWorkspace frontmost-app lookup failed:', error);
       }
       // Keep a fallback for environments where JXA cannot query AppKit.
-      const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true']);
-      const bundleId = stdout.trim();
-      return bundleId && bundleId !== app.getBundleId() ? { bundleId } : null;
+      const { stdout } = await execFileAsync('osascript', ['-e', 'tell application "System Events" to get unix id of first application process whose frontmost is true']);
+      return parseFrontmostPid(stdout, process.pid);
     }
     if (process.platform === 'win32') {
       const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `${POWERSHELL_FOREGROUND}[LgWin]::GetForegroundWindow().ToInt64()`]);
@@ -351,17 +350,15 @@ async function captureFrontmostApp() {
 function sameTarget(left, right) {
   if (!left || !right) return false;
   if (left.pid && right.pid) return left.pid === right.pid;
-  return !!left.bundleId && left.bundleId === right.bundleId;
+  if (left.handle && right.handle) return left.handle === right.handle;
+  if (left.window && right.window) return left.window === right.window;
+  return false;
 }
 
 async function activatePreviousApp() {
   if (!previousApp) throw new Error('The original app could not be identified.');
   if (process.platform === 'darwin' && previousApp.pid) {
     await activateMacApp(execFileAsync, previousApp.pid);
-    return;
-  }
-  if (process.platform === 'darwin' && previousApp.bundleId) {
-    await execFileAsync('osascript', ['-e', `tell application id "${previousApp.bundleId}" to activate`]);
     return;
   }
   if (process.platform === 'win32' && previousApp.handle) {
