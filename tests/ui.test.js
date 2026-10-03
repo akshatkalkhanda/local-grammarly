@@ -46,10 +46,12 @@ async function mount(t, Component = Widget, props = {}) {
   const requests = [];
   let selection;
   let cancels = 0;
+  let hides = 0;
   const api = {
     ready() {},
     onTextSelected(callback) { selection = callback; return () => {}; },
     cancelGeneration() { cancels += 1; },
+    hideWidget() { hides += 1; },
     generateStream(_action, _text, _tone, _instruction, _target, onChunk) {
       const request = { ...deferred(), onChunk };
       requests.push(request);
@@ -65,7 +67,7 @@ async function mount(t, Component = Widget, props = {}) {
   t.after(async () => { await act(async () => root.unmount()); dom.window.close(); delete globalThis.window; delete globalThis.document; });
   const button = (label) => [...document.querySelectorAll('button')].find(element => element.textContent.includes(label));
   return {
-    requests, button, get cancels() { return cancels; },
+    requests, button, get cancels() { return cancels; }, get hides() { return hides; },
     async select(text) { await act(async () => selection({ text, selectionId: requests.length + 1 })); },
     async expand() { await act(async () => document.querySelector('.widget-trigger').click()); },
     async click(label) { assert.ok(button(label), `Missing button: ${label}`); await act(async () => button(label).click()); }
@@ -90,9 +92,20 @@ test('automatic grammar checking starts on copy and still requires review before
   const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: true } });
   await ui.select('They is here.');
   assert.equal(ui.requests.length, 1);
+  assert.ok(document.body.textContent.includes('Checking grammar'));
+  assert.ok(document.querySelector('[aria-label="Dismiss suggestion"]'));
   assert.ok(ui.button('Cancel generation'));
   await act(async () => ui.requests[0].resolve('They are here.'));
   assert.equal(ui.button('Replace text').disabled, false);
+});
+
+test('the suggestion panel can be dismissed without applying a change', async (t) => {
+  const ui = await mount(t);
+  await ui.select('They is here.'); await ui.expand(); await ui.click('Correct');
+  await act(async () => ui.requests[0].resolve('They are here.'));
+  await act(async () => document.querySelector('[aria-label="Dismiss suggestion"]').click());
+  assert.equal(ui.hides, 1);
+  assert.equal(document.querySelector('.widget-shell'), null);
 });
 
 test('automatic grammar checking can be disabled', async (t) => {
