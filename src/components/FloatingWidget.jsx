@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loader2, Minimize2, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
 import DiffView from './DiffView';
 import { OllamaService } from '../OllamaService';
@@ -28,6 +28,8 @@ export default function FloatingWidget({ config }) {
   const [translationTarget, setTranslationTarget] = useState('English');
   const requestVersion = useRef(0);
   const generationActive = useRef(false);
+  const [automaticRequest, setAutomaticRequest] = useState(null);
+  const handledAutomaticRequest = useRef(0);
   const selectionTooLong = selectedText.length > 20_000;
   const wordCount = useMemo(() => selectedText ? selectedText.trim().split(/\s+/).length : 0, [selectedText]);
 
@@ -45,7 +47,8 @@ export default function FloatingWidget({ config }) {
       setSelectedText(text);
       setSuggestion('');
       setNotice('');
-      setIsExpanded(false);
+      setIsExpanded(config.autoSuggestOnCopy === true);
+      if (config.autoSuggestOnCopy === true) setAutomaticRequest({ text, id: Date.now() + Math.random() });
     });
     desktop.ready();
     return () => {
@@ -54,10 +57,10 @@ export default function FloatingWidget({ config }) {
       desktop.cancelGeneration();
       removeListener();
     };
-  }, []);
+  }, [config.autoSuggestOnCopy]);
 
-  const requestSuggestion = async (action = activeAction) => {
-    if (!selectedText.trim() || generationActive.current || selectionTooLong) return;
+  const requestSuggestion = useCallback(async (action = activeAction, text = selectedText) => {
+    if (!text.trim() || generationActive.current || text.length > 20_000) return;
     generationActive.current = true;
     const version = ++requestVersion.current;
     setIsGenerating(true);
@@ -67,10 +70,10 @@ export default function FloatingWidget({ config }) {
     try {
       const desktop = getDesktopApi();
       const response = desktop
-        ? await desktop.generateStream(action, selectedText, tone, customInstruction, translationTarget, (chunk) => {
+        ? await desktop.generateStream(action, text, tone, customInstruction, translationTarget, (chunk) => {
           if (version === requestVersion.current) setSuggestion((current) => current + chunk);
         })
-        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}:\n${selectedText}`, config.systemPrompt);
+        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}:\n${text}`, config.systemPrompt);
       if (version !== requestVersion.current) return;
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
@@ -84,7 +87,13 @@ export default function FloatingWidget({ config }) {
         setIsGenerating(false);
       }
     }
-  };
+  }, [activeAction, selectedText, tone, customInstruction, translationTarget, config.url, config.model, config.systemPrompt]);
+
+  useEffect(() => {
+    if (!automaticRequest || handledAutomaticRequest.current === automaticRequest.id) return;
+    handledAutomaticRequest.current = automaticRequest.id;
+    requestSuggestion('grammar', automaticRequest.text);
+  }, [automaticRequest, requestSuggestion]);
 
   const cancelGeneration = () => {
     requestVersion.current += 1;
@@ -174,7 +183,7 @@ export default function FloatingWidget({ config }) {
               </button>
             ))}
           </div>
-          <p className="widget-hint">Tip: copy selected text to open this automatically. Suggestions are streamed as they generate.</p>
+          <p className="widget-hint">Copy selected text to check grammar automatically. Review the result before replacing text.</p>
         </section>
       ) : (
         <section className="suggestion-panel">

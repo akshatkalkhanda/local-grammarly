@@ -1,6 +1,14 @@
-# Repository review — 2 October 2026
+# Repository review — 3 October 2026
 
-Reviewed `main` at `dc5b636`. The changes on `fix/reliability-and-usage-guide` are a focused reliability update, documentation rewrite, and test baseline. They do not make this a production-ready replacement for Grammarly.
+Reviewed `main` at `99e212b` and updated the paste-back flow, automatic suggestions, tests, and usage guide. This is still a beta desktop assistant, not a system-wide inline Grammarly replacement.
+
+## Changes in this update
+
+- Wait for source-app capture before showing the widget. Previously that asynchronous capture could finish after the widget took focus and leave an old target in memory.
+- Before paste-back, reactivate the source app, confirm that it regained focus, and copy the current selection to compare it with the submitted text. If verification fails, keep the suggestion on the clipboard and show the widget with an error.
+- Set the one-minute Undo entry only after the paste command is sent.
+- Start grammar checking automatically when copied text opens the widget, with a Settings toggle to disable it. Replacement still requires a click.
+- Add UI tests for automatic checking and update the README with the current behavior and its limits.
 
 ## Bugs fixed in this change
 
@@ -23,7 +31,7 @@ These are not claimed as fixed. Findings below are from code inspection unless o
 
 | Priority | Location / evidence | Impact and next step |
 | --- | --- | --- |
-| High | `electron/main.js`: `widget:replace-text` hides the app, waits 500 ms, then sends ⌘V. `undoLastReplacement` sends ⌘Z to the focused app. | Neither operation verifies the original app, document, or selection. Switching apps/fields can paste or undo in the wrong place. Capture and revalidate target identity; disable automatic replacement when it cannot be verified. Until then, use manual Copy/paste. Native macOS reproduction is still needed. |
+| High | `electron/main.js`: paste-back checks the app identity and selected text, while tray Undo sends ⌘Z to the focused app. | Two windows in the same app with identical selected text cannot be distinguished; paste command delivery does not prove the edit was accepted. Undo still has no target verification. Use manual Copy/paste and native Undo when the destination is uncertain. Native macOS reproduction is still needed. |
 | Medium | `electron/main.js`: `captureSelectionAndShow` snapshots only `clipboard.readText()` before `clipboard.clear()`. | A failed capture loses existing image/HTML/RTF clipboard formats. Preserve all supported formats or change capture to avoid clearing the clipboard; test on macOS with images, styled text, and file copies. |
 | Medium | `electron/main.js`: fixed 480×420 transparent widget; React collapse changes only visible content. | A tiny visible sparkle may leave a larger transparent window area intercepting mouse input. Confirm on macOS, then resize the native window when collapsing/expanding. |
 | Medium | `electron/main.js`: `createGenerationRequest` has an output cap but no explicit context-window budget. | Large selections can exceed the model's context budget. Output-limit detection prevents one kind of truncation, but model-side input truncation is still possible. Prefer sentence/paragraph chunks and reserve context for both prompt and output. |
@@ -37,28 +45,28 @@ Local model quality is another limit: a terminal success event does not prove th
 
 ## Suggested feature order
 
-1. **Safe replacement and undo.** Verify the source app/selection before paste-back; automatically fall back to Copy when unsure. This protects existing text.
+1. **Document-aware replacement and undo.** Capture the source window and document, confirm the actual edit, and provide a scoped Undo path where supported. The current app/selection check is a first safeguard.
 2. **Privacy controls.** Add “Pause clipboard detection”, a shortcut-only mode, an app exclusion list, and a history-off switch.
 3. **Useful performance feedback.** Show model name, elapsed time, first-token time, and generation rate. Use Ollama's reported timing fields; benchmark representative passages before promising speed improvements.
 4. **Writing preferences.** Personal dictionary and protected technical terms (for example censhare, Keycloak, HAProxy), British/American English, and reusable presets for emails, Jira tickets, and incident updates.
 5. **Paragraph-aware processing.** Estimate context usage, split long selections at natural boundaries, preserve formatting, and let users review each segment.
 6. **Release and onboarding.** First-run Ollama checks, clear model installation instructions, keyboard shortcut customization, login launch, signed builds, CI, and screenshots of the real macOS app.
-7. **Inline checking later.** A browser extension or editor integration is a separate product surface. Start it only after the desktop workflow is reliable.
+7. **Inline checking later.** A browser extension or editor integration is needed for Grammarly-style underlines and automatic checks while typing. A universal desktop key listener alone cannot reliably read and replace text across every app.
 
 For faster suggestions, first measure latency on the user's actual Mac with the existing small model. Cancelling stale work avoids wasted inference; streaming alone does not increase token generation speed.
 
 ## Validation performed
 
 - Dependency installation completed with the lockfile.
-- 18 regression cases passed: nine stream/URL checks, three preload IPC checks, and six React UI checks in jsdom.
+- 21 regression cases passed: nine stream/URL checks, three preload IPC checks, and nine React UI checks in jsdom.
 - `npm run lint` passed.
 - `npm run build:app` compiled the renderer and Electron main process.
-- `npm audit` reported zero known vulnerabilities after compatible dependency updates and the test dependency addition.
+- `npm audit` reports eight high-severity findings in the electron-builder development dependency chain through `http-cache-semantics`. `npm audit fix` does not resolve them within the current dependency range. Recheck upstream builder releases before distribution.
 - `git diff --check` passed.
 
 The UI tests use a mocked desktop bridge and transformed production React components. They do not exercise macOS APIs or a real model. The test runner may summarize the three test files; running each test file directly with Node prints its individual cases.
 
-Not run here: a macOS DMG build, code signing/notarization, Accessibility/Automation prompts, native focus/paste/undo behavior, visual macOS inspection, or real Ollama latency/quality benchmarks. This work was validated in Linux with Node 24.19.0.
+Not run here: a macOS DMG build, code signing/notarization, Accessibility/Automation prompts, native focus/paste/undo behavior, visual macOS inspection, or real Ollama latency/quality benchmarks. Automated checks ran on macOS with supported Node 24.19.0.
 
 ## Mac smoke test before merging/releasing
 
