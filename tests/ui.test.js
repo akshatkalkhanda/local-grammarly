@@ -54,7 +54,7 @@ async function mount(t, Component = Widget, props = {}) {
     cancelGeneration() { cancels += 1; },
     hideWidget() { hides += 1; },
     generateStream(_action, _text, _tone, _instruction, _target, onChunk) {
-      const request = { ...deferred(), onChunk, tone: _tone, instruction: _instruction };
+      const request = { ...deferred(), onChunk, action: _action, target: _target, tone: _tone, instruction: _instruction };
       requests.push(request);
       return request.promise;
     },
@@ -281,4 +281,83 @@ test('settings waits for disk-backed config instead of exposing writable default
   await act(async () => loading.resolve({ ...config, excludedApps: ['iterm2'], excludedWebsites: ['example.com'] }));
   assert.equal(document.querySelector('[name="excludedApps"]').value, 'iterm2');
   assert.equal(document.querySelector('[name="excludedWebsites"]').value, 'example.com');
+});
+
+
+async function selectOption(label, value) {
+  await act(async () => {
+    const select = document.querySelector(`[aria-label="${label}"]`);
+    assert.ok(select, `Missing ${label}`);
+    select.value = value;
+    select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+}
+
+test('quick replies use the chosen intent and offer Copy without replacing the incoming message', async t => {
+  const ui = await mount(t);
+  await ui.select('Can we meet tomorrow?'); await ui.expand();
+  await selectOption('Reply intent', 'reply_decline');
+  await ui.click('Draft reply');
+  assert.equal(ui.requests[0].action, 'reply_decline');
+  await act(async () => ui.requests[0].resolve('Thanks for inviting me, but I cannot make it.'));
+  assert.ok(ui.button('Copy'));
+  assert.equal(ui.button('Replace text'), undefined);
+  assert.ok(document.querySelector('.clean-preview'));
+});
+
+test('Before and After preview do not change what is sent to Replace', async t => {
+  let replacement;
+  const ui = await mount(t, Widget, { api: { replaceText: async value => { replacement = value; return { ok: true }; } } });
+  await ui.select('They is here.'); await ui.expand(); await ui.click('Correct');
+  await act(async () => ui.requests[0].resolve('They are here.'));
+  await ui.click('Before');
+  assert.equal(document.querySelector('.clean-preview').textContent, 'They is here.');
+  await ui.click('After');
+  assert.equal(document.querySelector('.clean-preview').textContent, 'They are here.');
+  await ui.click('Changes');
+  assert.ok(document.querySelector('.diff-removed'));
+  await ui.click('Before'); await ui.click('Replace text');
+  assert.equal(replacement.suggestion, 'They are here.');
+});
+
+test('favorites generate with their own instructions and persist selection', async t => {
+  const patches = [];
+  const ui = await mount(t, Widget, { config: { ...config, presets: [{ id: 'work', name: 'Work', instruction: 'Be brief.', favorite: true }] }, api: { savePreferences: async patch => patches.push(patch) } });
+  await ui.select('Please review this.'); await ui.expand(); await ui.click('★ Work');
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].instruction, 'Be brief.');
+  assert.equal(ui.requests[0].action, 'improve');
+  assert.deepEqual(patches, [{ presetId: 'work' }]);
+  await act(async () => ui.requests[0].resolve('Please review.'));
+});
+
+test('remembered tone, language and preset initialize the next widget session', async t => {
+  const ui = await mount(t, Widget, { config: { ...config, preferences: { tone: 'emojified', translationTarget: 'German', presetId: 'work' }, presets: [{ id: 'work', name: 'Work', instruction: 'Be brief.' }] } });
+  await ui.select('Hello there'); await ui.expand(); await ui.click('Translate');
+  assert.equal(ui.requests[0].tone, 'emojified');
+  assert.equal(ui.requests[0].target, 'German');
+  assert.equal(ui.requests[0].instruction, 'Be brief.');
+  await act(async () => ui.requests[0].resolve('Hallo! 👋'));
+});
+
+test('pause control calls the main process and shows saved status', async t => {
+  const durations = [];
+  const ui = await mount(t, Widget, { api: { setPause: async duration => { durations.push(duration); return { pausedUntil: duration === 'resume' ? 0 : Date.now() + 900_000 }; } } });
+  await ui.select('Hello'); await ui.expand();
+  await selectOption('Pause assistant', '15m');
+  assert.match(document.body.textContent, /Paused until/);
+  await selectOption('Pause assistant', 'resume');
+  assert.match(document.body.textContent, /Automatic popups active/);
+  assert.deepEqual(durations, ['15m', 'resume']);
+});
+
+test('runtime pause and preference broadcasts preserve an unsaved Settings draft', async t => {
+  let broadcast;
+  const ui = await mount(t, App, { api: { getConfig: async () => ({ ...config, presets: [] }), onConfigUpdated: callback => { broadcast = callback; return () => {}; } } });
+  await act(async () => { window.location.hash = '#settings'; window.dispatchEvent(new window.Event('hashchange')); });
+  await ui.click('Add preset');
+  assert.ok(document.querySelector('[aria-label="Preset 1 name"]'));
+  await act(async () => broadcast({ ...config, presets: [], pausedUntil: Date.now() + 900_000, preferences: { tone: 'friendly' } }));
+  assert.ok(document.querySelector('[aria-label="Preset 1 name"]'));
+  assert.match(document.body.textContent, /Paused until/);
 });

@@ -35,7 +35,10 @@ export default function App() {
     }).catch(() => {
       if (active) setLoadError('Could not load saved settings. Restart the app and try again.');
     });
-    const unsubscribe = desktop.onConfigUpdated(setConfig);
+    const unsubscribe = desktop.onConfigUpdated(incoming => setConfig(current =>
+      window.location.hash === '#settings'
+        ? { ...current, pausedUntil: incoming.pausedUntil, preferences: incoming.preferences }
+        : incoming));
     return () => { active = false; unsubscribe(); };
   }, []);
 

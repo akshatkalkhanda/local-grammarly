@@ -12,6 +12,6 @@ export function sanitizePresets(value = []) {
     if (ids.has(id) || names.has(name.toLowerCase())) throw new Error('Give each writing preset a unique name.');
     ids.add(id);
     names.add(name.toLowerCase());
-    return { id, name, instruction };
+    return { id, name, instruction, ...(preset.favorite === true ? { favorite: true } : {}) };
   });
 }

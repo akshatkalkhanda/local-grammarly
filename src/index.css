@@ -95,3 +95,16 @@ button:disabled { cursor: wait; opacity: .65; }
 
 .widget-header { -webkit-app-region: drag; app-region: drag; user-select: none; cursor: grab; }
 .widget-header-actions, .widget-header button { -webkit-app-region: no-drag; app-region: no-drag; cursor: pointer; }
+
+.pause-control { padding: 8px 14px; font-size: 11px; color: #547066; border-top: 1px solid #edf3ef; }
+.pause-control label, .quick-reply { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.pause-control select, .quick-reply select { padding: 5px; border: 1px solid #dbe8e2; border-radius: 6px; background: #f9fcfa; color: #315044; }
+.quick-reply { margin-top: 12px; font-size: 12px; }
+.quick-reply label { display: grid; gap: 4px; }
+.favorite-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.favorite-presets button { font-size: 11px; max-width: 100%; overflow-wrap: anywhere; }
+.favorite-toggle { display: flex; gap: 8px; margin: 10px 0; font-size: 13px; }
+.preview-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.preview-tabs button { border: 0; border-radius: 6px; padding: 6px 10px; background: #f1f6f3; color: #547066; font-size: 11px; }
+.preview-tabs button[aria-pressed="true"] { background: #dcefe4; color: #126c4a; }
+.clean-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
