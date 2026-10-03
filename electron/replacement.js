@@ -10,11 +10,14 @@ export class ReplacementError extends Error {
 // from the restored target is the last safety check before sending paste.
 export async function replaceSelection({ target, original, replacement, clipboard, currentTarget, activate, key, pause, sameTarget }) {
   if (!target) throw new ReplacementError('focus', 'The source app could not be identified. Copy the text again.');
-  if (!sameTarget(target, await currentTarget())) {
-    try { await activate(target); }
-    catch (error) {
-      throw new ReplacementError('focus', `The source app could not be reactivated: ${error.message || 'unknown error'}`);
-    }
+  // A matching PID only proves the source app is frontmost; its editor may
+  // still have lost key focus when the panel appeared. Reactivate it even when
+  // it already appears frontmost, then allow AppKit and the editor to settle.
+  try {
+    await activate(target);
+    await pause(150);
+  } catch (error) {
+    throw new ReplacementError('focus', `The source app could not be reactivated: ${error.message || 'unknown error'}`);
   }
 
   let focused = false;

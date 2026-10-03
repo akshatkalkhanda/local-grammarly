@@ -31,6 +31,13 @@ test('restores focus, verifies a disposable selection, then replaces it', async 
   assert.equal(field.pasted, true);
 });
 
+test('reactivates the source app even when its process already appears frontmost', async () => {
+  const { field, options } = disposableField({ focused: 'editor' });
+  await replaceSelection(options);
+  assert.equal(field.activated, true);
+  assert.equal(field.text, 'They are here.');
+});
+
 test('a changed selection never receives the suggestion', async () => {
   const { field, options } = disposableField({ text: 'They is here. Other text.', selected: 'Other text.' });
   await assert.rejects(replaceSelection(options), { reason: 'selection' });
