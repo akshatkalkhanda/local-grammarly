@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  setPause: (duration) => ipcRenderer.invoke('assistant:pause', duration),
+  savePreferences: (preferences) => ipcRenderer.invoke('preferences:save', preferences),
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   getModels: (url) => ipcRenderer.invoke('ollama:models', url),

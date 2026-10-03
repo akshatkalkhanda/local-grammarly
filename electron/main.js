@@ -1,7 +1,9 @@
+import { createGenerationRequest } from './generation.js';
+import { isPaused, pauseDeadline } from '../src/writing.js';
 import { DEFAULT_CONFIG, sanitizeConfig } from './config.js';
 import { readSettings, writeSettings } from './settings-store.js';
 import { shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile } from 'fs/promises';
@@ -20,15 +22,6 @@ const legacyUserData = app.getPath('userData');
 const settingsDirectory = path.join(app.getPath('appData'), 'AI Editor');
 
 
-const ACTIONS = {
-  grammar: 'Correct grammar, spelling, and punctuation while preserving the writer\'s voice.',
-  improve: 'Improve clarity, flow, and readability while preserving the meaning.',
-  professional: 'Rewrite the text in a professional, confident, and concise tone.',
-  concise: 'Make the text shorter and clearer while retaining its essential meaning.',
-  translate: 'Translate the text accurately, preserving its meaning, tone, names, and formatting.'
-};
-const MAX_SELECTION_LENGTH = 20_000;
-const OUTPUT_ONLY_RULE = 'Output only the requested final text. Do not add introductions, labels, explanations, quotation marks, markdown fences, or phrases such as "Here is the revised text".';
 
 let mainWindow = null;
 let settingsWindow = null;
@@ -51,14 +44,6 @@ let suppressClipboardUntil = 0;
 let checkingExclusions = false;
 const activeGenerations = new Map();
 
-const TONES = {
-  neutral: 'Use a natural, clear, and neutral tone. Do not add new emojis.',
-  emojified: 'Use a natural, friendly tone and add one to three contextually relevant emojis where appropriate. Keep all words readable; never replace words with emojis. Preserve the original meaning, facts, names, links, and code. Avoid emoji overload, and do not add playful emojis to serious or sensitive messages.',
-  friendly: 'Use a warm, friendly, and approachable tone.',
-  confident: 'Use a confident, direct, and decisive tone.',
-  concise: 'Use a concise tone and remove unnecessary words.',
-  formal: 'Use a polished, formal, and professional tone.'
-};
 
 function configPath() {
   return path.join(settingsDirectory, 'settings.json');
@@ -104,9 +89,11 @@ async function addHistory(entry) {
 let settingsSaveQueue = Promise.resolve();
 function saveConfig(candidate) {
   const save = settingsSaveQueue.then(async () => {
-    const nextConfig = sanitizeConfig({ ...config, ...candidate });
+    const patch = typeof candidate === 'function' ? candidate(config) : candidate;
+    const nextConfig = sanitizeConfig({ ...config, ...patch });
     await writeSettings(configPath(), nextConfig);
     config = nextConfig;
+    updateTrayMenu();
     for (const window of [mainWindow, settingsWindow]) {
       if (window && !window.isDestroyed()) window.webContents.send('config-updated', config);
     }
@@ -260,29 +247,6 @@ async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
   }
 }
 
-function createGenerationRequest(action, text, tone = 'neutral', customInstruction = '', translationTarget = 'English') {
-  if (!Object.hasOwn(ACTIONS, action)) throw new Error('Unsupported writing action.');
-  const source = String(text ?? '');
-  if (source.length > MAX_SELECTION_LENGTH) throw new Error('Select at most 20,000 characters. Split longer text into smaller passages.');
-  if (!source.trim()) throw new Error('Select some text before requesting a suggestion.');
-  const chosenTone = Object.hasOwn(TONES, tone) ? tone : 'neutral';
-  const custom = String(customInstruction ?? '').trim().slice(0, 500);
-  const target = ['English', 'German', 'Dutch'].includes(translationTarget) ? translationTarget : 'English';
-  const translationRule = action === 'translate'
-    ? `Translate from the detected source language into ${target}. Do not explain the translation or retain the source text.`
-    : '';
-  return {
-    action,
-    source,
-    tone: chosenTone,
-    system: `${config.systemPrompt}\n\n${OUTPUT_ONLY_RULE}`,
-    prompt: `${ACTIONS[action]}\n${TONES[chosenTone]}${translationRule ? `\n${translationRule}` : ''}${custom ? `\nAdditional instruction: ${custom}` : ''}\n\nText:\n${source}\n\n${OUTPUT_ONLY_RULE}`,
-    options: {
-      temperature: 0.2,
-      num_predict: Math.min(2048, Math.max(128, Math.ceil(source.length / 2)))
-    }
-  };
-}
 
 function cleanSuggestion(value) {
   let text = String(value ?? '').trim();
@@ -292,7 +256,7 @@ function cleanSuggestion(value) {
 }
 
 async function generateSuggestion(action, text, tone, customInstruction, translationTarget) {
-  const request = createGenerationRequest(action, text, tone, customInstruction, translationTarget);
+  const request = createGenerationRequest(config, action, text, tone, customInstruction, translationTarget);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
@@ -322,7 +286,7 @@ async function generateSuggestion(action, text, tone, customInstruction, transla
 }
 
 async function streamSuggestion(action, text, tone, customInstruction, translationTarget, onChunk, controller = new AbortController()) {
-  const request = createGenerationRequest(action, text, tone, customInstruction, translationTarget);
+  const request = createGenerationRequest(config, action, text, tone, customInstruction, translationTarget);
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetch(`${config.url}/api/generate`, {
@@ -447,7 +411,14 @@ function writeAssistantClipboard(text) {
 
 function registerIpc() {
   ipcMain.handle('config:get', () => config);
-  ipcMain.handle('config:save', (_event, candidate) => saveConfig(candidate));
+  ipcMain.handle('config:save', (_event, candidate) => {
+    // Runtime controls have their own patch channels; a stale Settings draft
+    // must not undo a pause or the last chosen writing preferences.
+    const { pausedUntil: _pause, preferences: _preferences, ...settings } = candidate ?? {};
+    return saveConfig(settings);
+  });
+  ipcMain.handle('preferences:save', (_event, patch) => saveConfig(current => ({ preferences: { ...current.preferences, ...patch } })));
+  ipcMain.handle('assistant:pause', (_event, duration) => setPause(duration));
   ipcMain.handle('ollama:models', async (_event, url) => {
     const baseUrl = validateUrl(url);
     const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5_000), redirect: 'error' });
@@ -555,6 +526,43 @@ async function undoLastReplacement() {
   }
 }
 
+async function setPause(duration) {
+  const pausedUntil = pauseDeadline(duration);
+  const saved = await saveConfig({ pausedUntil });
+  if (pausedUntil > Date.now()) {
+    pendingText = '';
+    mainWindow?.hide();
+    if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
+  }
+  // Do not replay text copied while paused when the user resumes.
+  lastClipboardText = clipboard.readText();
+  return saved;
+}
+
+function pauseFromTray(duration) {
+  setPause(duration).catch(error => dialog.showErrorBox('Could not change pause', error.message));
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'AI Editor', enabled: false },
+    { type: 'separator' },
+    { label: 'Open assistant for clipboard', click: () => showWidgetWithText(clipboard.readText(), true) },
+    { label: 'Undo last replacement', click: undoLastReplacement },
+    { label: isPaused(config) ? `Paused until ${new Date(config.pausedUntil).toLocaleString()}` : 'Automatic popups active', enabled: false },
+    { label: 'Pause assistant', submenu: [
+      { label: '15 minutes', click: () => pauseFromTray('15m') },
+      { label: '1 hour', click: () => pauseFromTray('1h') },
+      { label: 'Until tomorrow (midnight)', click: () => pauseFromTray('tomorrow') },
+      { label: 'Resume now', enabled: isPaused(config), click: () => pauseFromTray('resume') }
+    ] },
+    { label: 'Settings', click: createSettingsWindow },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() }
+  ]));
+}
+
 app.whenReady().then(async () => {
   await loadConfig();
   await loadHistory();
@@ -580,15 +588,12 @@ app.whenReady().then(async () => {
   tray = new Tray(trayIcon);
   if (process.platform !== 'darwin') tray.setTitle('AI Editor');
   tray.setToolTip('Local AI Writing Assistant');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'AI Editor', enabled: false },
-    { type: 'separator' },
-    { label: 'Open assistant for clipboard', click: () => showWidgetWithText(clipboard.readText(), true) },
-    { label: 'Undo last replacement', click: undoLastReplacement },
-    { label: 'Settings', click: createSettingsWindow },
-    { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() }
-  ]));
+  updateTrayMenu();
+  let wasPaused = isPaused(config);
+  setInterval(() => {
+    const paused = isPaused(config);
+    if (paused !== wasPaused) { wasPaused = paused; updateTrayMenu(); }
+  }, 1000);
   tray.on('double-click', createSettingsWindow);
 
   lastClipboardText = clipboard.readText();
@@ -597,7 +602,7 @@ app.whenReady().then(async () => {
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;
-    if (BrowserWindow.getFocusedWindow()) return;
+    if (isPaused(config) || BrowserWindow.getFocusedWindow()) return;
     checkingExclusions = true;
     try {
       const source = await captureFrontmostApp();
@@ -605,8 +610,9 @@ app.whenReady().then(async () => {
         (target, kind) => readBrowserUrl(execFileAsync, target, kind));
       // A URL lookup may take time or display a macOS permission prompt. Never
       // deliver stale clipboard content or restore focus to a departed app.
-      if (suppress || clipboard.readText() !== currentText || BrowserWindow.getFocusedWindow()
+      if (isPaused(config) || suppress || clipboard.readText() !== currentText || BrowserWindow.getFocusedWindow()
           || isPasting || isReplacing || !sameTarget(source, await captureFrontmostApp())) return;
+      if (isPaused(config)) return;
       await showWidgetWithText(currentText, false, source);
     } catch (error) {
       console.error('Could not check popup exclusions:', error);

@@ -235,3 +235,28 @@ Drag the **AI Editor header** to move the popup; Back, Minimize and Close remain
 Click **Save settings** after changing preferences and wait for the saved message. On macOS, development and packaged builds now share `~/Library/Application Support/AI Editor/settings.json`. Existing settings from the old application folder are imported when the new file is absent. Saves replace the file atomically and keep a `.bak` recovery copy. Startup recovers valid fields independently, so an invalid preset or model preference does not erase your exclusions. Settings controls wait until saved preferences finish loading. The browser preview also reloads its saved local settings.
 
 Already-reset exclusions cannot be reconstructed from an empty settings file: enter them once and save with this version, then fully quit and reopen to confirm they persist.
+
+### Quick reply
+
+In writing actions, choose a **Quick reply** intent and click **Draft reply**:
+
+- **Polish my notes:** select your own short notes, such as “yes, tomorrow works”.
+- **Accept**, **Decline politely**, **Ask for details:** select the incoming message you want to answer.
+- **Custom reply:** select the incoming message and put your directions in the custom instruction field.
+
+Reply drafts offer **Copy** so you can paste into the actual reply field. They never send a message or replace the incoming message. Your tone and selected preset also apply. Review facts and commitments before sending; model output can still be wrong.
+
+### Pause automatic popups
+
+Use **Pause assistant** in the menu bar, the popup footer, or Settings. Choose **15 minutes**, **1 hour**, or **Until tomorrow (midnight)** in your local timezone. **Resume now** ends the pause early. Pausing closes the current popup and cancels its generation. The deadline is saved across restarts; automatic popups resume after it expires. Text copied while paused is not replayed on resume. Manual opening through the tray or selection shortcut still works.
+
+### Dictionary, preview and favorites
+
+- **Personal dictionary:** Settings → Personal dictionary. Enter one name, technical term, or phrase per line and save. Up to 200 entries of 80 characters each are included in model instructions. This guides preservation; it does not guarantee exact model output.
+- **Before / After:** use **Changes**, **Before**, or **After** above the suggestion to see highlighted edits, the original, or a clean result. Copy and Replace always use the generated suggestion, even while viewing Before.
+- **Favorite presets:** check **Show as a favorite button** on a preset and save Settings. Its star button in the popup runs **Improve** with that preset in one click, then waits for review.
+- **Remembered preferences:** changing tone, translation language, or selected preset automatically saves that choice. The next app session restores it. These choices also apply to automatic grammar suggestions. Custom instructions typed by hand last only for the current session; choosing No preset clears the remembered preset. Settings saves do not undo a running pause or newer writing preferences.
+
+### Native smoke test
+
+Run `npm run test:electron` on macOS to build and exercise the actual Electron main process, preload bridge and renderer twice in succession. It uses temporary settings, a mocked clipboard, disabled shortcut registration/permission prompts, and mocked model responses. It verifies pause/resume, settings writes, stale Settings saves, favorites, reply review, and restoring preferences after a fresh process launch. It does not test real Ollama quality, real macOS permissions, or copying/pasting into other applications. Run `npm test`, `npm run lint`, and `npm run build` for the full regular checks and packaging.
