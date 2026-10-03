@@ -176,7 +176,11 @@ export default function FloatingWidget({ config }) {
           <div className="writing-controls">
             <label>Tone<select value={tone} onChange={(event) => setTone(event.target.value)} disabled={isGenerating}><option value="neutral">Natural</option><option value="friendly">Friendly</option><option value="confident">Confident</option><option value="concise">Concise</option><option value="formal">Formal</option></select></label>
             <label>Translate to<select value={translationTarget} onChange={(event) => setTranslationTarget(event.target.value)} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
-            <input className="custom-instruction" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} disabled={isGenerating} maxLength={500} placeholder="Custom instruction (optional)" aria-label="Custom writing instruction" />
+            <input className="custom-instruction" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} onClick={async (event) => {
+              const input = event.currentTarget;
+              await getDesktopApi()?.focusWidget?.();
+              input.focus();
+            }} disabled={isGenerating} maxLength={500} placeholder="Custom instruction (optional)" aria-label="Custom writing instruction" />
           </div>
           <div className="action-grid">
             {actions.map(({ id, label, icon: Icon, description }) => (

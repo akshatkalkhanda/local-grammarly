@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getHistory: () => ipcRenderer.invoke('history:list'),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   hideWidget: () => ipcRenderer.send('widget:hide'),
+  focusWidget: () => ipcRenderer.invoke('widget:focus'),
   copyText: (text) => ipcRenderer.send('widget:copy', text),
   replaceText: (request) => ipcRenderer.invoke('widget:replace-text', request),
   onTextSelected: (callback) => {
