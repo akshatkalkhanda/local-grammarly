@@ -11,11 +11,14 @@ button:disabled { cursor: wait; opacity: .65; }
 .widget-shell { max-height: calc(100vh - 20px); margin: 10px; overflow: auto; color: #172b25; background: #fff; border: 1px solid #dce8e2; border-radius: 14px; box-shadow: 0 12px 34px rgb(20 47 37 / 20%); animation: widget-enter .18s ease-out; }
 @keyframes widget-enter { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
 .widget-header { min-height: 48px; padding: 10px 12px 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5eeea; }
+.widget-header-actions { display: flex; align-items: center; gap: 2px; }
 .widget-brand { display: flex; align-items: center; gap: 8px; color: #1b362b; font-size: 13px; font-weight: 700; }
 .brand-mark, .settings-icon { display: grid; place-items: center; color: #fff; background: #167a55; border-radius: 8px; }
 .brand-mark { width: 25px; height: 25px; }
 .icon-button, .refresh-button { display: grid; place-items: center; width: 32px; height: 32px; color: #547066; border: 0; border-radius: 8px; background: transparent; }
 .icon-button:hover, .refresh-button:hover { color: #164c39; background: #edf6f1; }
+.dismiss-button { color: #81968d; }
+.dismiss-button:hover { color: #a3413b; background: #fff1f0; }
 .action-panel, .suggestion-panel { padding: 14px; }
 .selection-summary { margin: 0 0 13px; display: grid; gap: 3px; color: #668178; font-size: 12px; line-height: 1.4; }
 .selection-summary strong { color: #29463a; font-size: 12px; }
@@ -32,13 +35,13 @@ button:disabled { cursor: wait; opacity: .65; }
 .action-button span { display: grid; gap: 2px; font-size: 12px; font-weight: 650; }
 .action-button small { color: #7a9187; font-size: 10px; font-weight: 500; line-height: 1.2; }
 .widget-hint { margin: 12px 0 0; color: #748b81; font-size: 10.5px; line-height: 1.4; }
-.suggestion-heading { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+.suggestion-heading { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
 .suggestion-heading div { display: grid; gap: 1px; }
-.suggestion-heading span { color: #738c81; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.suggestion-heading span { color: #527468; font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .suggestion-heading strong { color: #1d3c30; font-size: 13px; }
 .text-button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; color: #167a55; border: 0; border-radius: 6px; background: transparent; font-size: 11px; font-weight: 650; }
 .text-button:hover { background: #edf7f2; }
-.diff-container { max-height: 210px; overflow: auto; padding: 11px; color: #31483e; background: #f6faf8; border: 1px solid #e1ede7; border-radius: 9px; font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
+.diff-container { max-height: 230px; overflow: auto; padding: 13px; color: #2d453a; background: #f7faf8; border: 1px solid #dce9e2; border-radius: 10px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; }
 .diff-removed { color: #a03f3b; background: #fdebea; border-radius: 3px; text-decoration: line-through; }
 .diff-added { color: #126b47; background: #ddf4e8; border-radius: 3px; font-weight: 600; }
 .diff-plain { margin: 0; white-space: pre-wrap; }
@@ -48,6 +51,8 @@ button:disabled { cursor: wait; opacity: .65; }
 .primary-button:hover { background: #0e6947; }
 .secondary-button { color: #38564a; border: 1px solid #d6e5de; background: #fff; }
 .secondary-button:hover { background: #f1f7f4; }
+.generation-status { min-height: 88px; padding: 14px; display: flex; align-items: center; gap: 10px; color: #45665a; background: #f5faf7; border: 1px solid #e0ebe5; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+.generation-status svg { flex: 0 0 auto; color: #167a55; }
 .widget-notice { padding: 9px 14px; color: #176947; background: #eff9f3; border-top: 1px solid #dceee4; font-size: 11px; font-weight: 600; }
 .loader { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

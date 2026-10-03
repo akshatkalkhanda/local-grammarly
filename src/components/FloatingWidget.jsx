@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loader2, Minimize2, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loader2, Minimize2, RefreshCw, Sparkles, WandSparkles, X } from 'lucide-react';
 import DiffView from './DiffView';
 import { OllamaService } from '../OllamaService';
 
@@ -167,10 +167,15 @@ export default function FloatingWidget({ config }) {
     <main className="widget-shell" aria-live="polite">
       <header className="widget-header">
         <div className="widget-brand"><span className="brand-mark"><Sparkles size={14} /></span>AI Editor</div>
-        <button className="icon-button" onClick={suggestion ? returnToActions : minimizeToPill} disabled={isGenerating} title={suggestion ? 'Back to writing actions' : 'Minimize to button'}>{suggestion ? <ChevronLeft size={17} /> : <ChevronDown size={17} />}</button>
+        <div className="widget-header-actions">
+          {suggestion && !isGenerating
+            ? <button className="icon-button" onClick={returnToActions} title="Back to writing actions" aria-label="Back to writing actions"><ChevronLeft size={17} /></button>
+            : <button className="icon-button" onClick={minimizeToPill} title="Minimize assistant" aria-label="Minimize assistant"><ChevronDown size={17} /></button>}
+          <button className="icon-button dismiss-button" onClick={dismiss} title="Dismiss suggestion" aria-label="Dismiss suggestion"><X size={16} /></button>
+        </div>
       </header>
 
-      {!suggestion ? (
+      {!suggestion && !isGenerating ? (
         <section className="action-panel">
           <p className="selection-summary"><strong>{wordCount} words selected</strong><span>{selectedText.slice(0, 92)}{selectedText.length > 92 ? '…' : ''}</span></p>
           <div className="writing-controls">
@@ -194,12 +199,16 @@ export default function FloatingWidget({ config }) {
         </section>
       ) : (
         <section className="suggestion-panel">
-          <div className="suggestion-heading"><div><span>{isGenerating ? 'Writing now' : 'AI suggestion'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${tone}`}</strong></div><button className="text-button" onClick={() => requestSuggestion()} disabled={isGenerating}><RefreshCw size={14} />Try again</button></div>
-          <DiffView originalText={selectedText} correctedText={suggestion} />
-          <div className="suggestion-actions">
-            <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating || isReplacing}><Copy size={15} />Copy</button>
-            <button className="primary-button" onClick={replaceText} disabled={isGenerating || isReplacing}><ClipboardPaste size={15} />{isReplacing ? 'Replacing…' : 'Replace text'}</button>
-          </div>
+          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
+          {suggestion
+            ? <>
+              <DiffView originalText={selectedText} correctedText={suggestion} />
+              <div className="suggestion-actions">
+                <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating || isReplacing}><Copy size={15} />Copy</button>
+                <button className="primary-button" onClick={replaceText} disabled={isGenerating || isReplacing}><ClipboardPaste size={15} />{isReplacing ? 'Replacing…' : 'Replace text'}</button>
+              </div>
+            </>
+            : <div className="generation-status" role="status"><Loader2 size={17} className="loader" /><span>Checking grammar… Your text stays unchanged until you choose an action.</span></div>}
         </section>
       )}
       {isGenerating && <button className="text-button" onClick={cancelGeneration}>Cancel generation</button>}
