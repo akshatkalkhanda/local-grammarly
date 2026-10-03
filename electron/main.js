@@ -565,8 +565,10 @@ app.whenReady().then(async () => {
     body: JSON.stringify({ model: config.model, prompt: '', keep_alive: '30m', stream: false })
   }).catch(() => {});
 
-  tray = new Tray(nativeImage.createEmpty());
-  tray.setTitle('AI Editor');
+  const trayIcon = nativeImage.createFromPath(path.join(__dirname, '../electron/tray-mark.png'));
+  if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
+  tray = new Tray(trayIcon);
+  if (process.platform !== 'darwin') tray.setTitle('AI Editor');
   tray.setToolTip('Local AI Writing Assistant');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'AI Editor', enabled: false },

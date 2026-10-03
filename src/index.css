@@ -13,8 +13,8 @@ button:disabled { cursor: wait; opacity: .65; }
 .widget-header { min-height: 48px; padding: 10px 12px 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5eeea; }
 .widget-header-actions { display: flex; align-items: center; gap: 2px; }
 .widget-brand { display: flex; align-items: center; gap: 8px; color: #1b362b; font-size: 13px; font-weight: 700; }
-.brand-mark, .settings-icon { display: grid; place-items: center; color: #fff; background: #167a55; border-radius: 8px; }
-.brand-mark { width: 25px; height: 25px; }
+.brand-mark { width: 27px; height: 27px; border-radius: 8px; box-shadow: 0 2px 5px rgb(14 83 59 / 18%); }
+.settings-brand-mark { width: 46px; height: 46px; border-radius: 13px; box-shadow: 0 6px 16px rgb(22 122 85 / 20%); }
 .icon-button, .refresh-button { display: grid; place-items: center; width: 32px; height: 32px; color: #547066; border: 0; border-radius: 8px; background: transparent; }
 .icon-button:hover, .refresh-button:hover { color: #164c39; background: #edf6f1; }
 .dismiss-button { color: #81968d; }
@@ -59,7 +59,6 @@ button:disabled { cursor: wait; opacity: .65; }
 
 .settings-page { height: 100vh; padding: 32px max(32px, calc((100vw - 760px) / 2)); color: #1d352a; background: #f7faf8; overflow-y: auto; }
 .settings-hero { margin-bottom: 27px; display: flex; align-items: flex-start; gap: 15px; }
-.settings-icon { width: 44px; height: 44px; border-radius: 12px; box-shadow: 0 6px 16px rgb(22 122 85 / 18%); }
 .eyebrow { margin: 1px 0 5px; color: #177952; font-size: 10px; font-weight: 800; letter-spacing: .11em; }
 .settings-hero h1 { margin: 0; font-size: 25px; letter-spacing: -.04em; }
 .settings-hero p:not(.eyebrow) { margin: 6px 0 0; color: #657b71; font-size: 13px; }

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Activity, Clipboard, Clock3, Database, LockKeyhole, RefreshCw, Save, Server, Sparkles, Trash2 } from 'lucide-react';
+import { Activity, Clipboard, Clock3, Database, LockKeyhole, RefreshCw, Save, Server, Trash2 } from 'lucide-react';
 import { DEFAULT_OLLAMA_URL, DEFAULT_MODEL } from '../OllamaService';
+import BrandMark from './BrandMark';
 
 const defaultPrompt = 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.';
 
@@ -83,7 +84,7 @@ export default function MainConfigUI({ config, setConfig }) {
   return (
     <main className="settings-page">
       <header className="settings-hero">
-        <div className="settings-icon"><Sparkles size={23} /></div>
+        <BrandMark className="settings-brand-mark" />
         <div><p className="eyebrow">LOCAL WRITING ASSISTANT</p><h1>AI Editor settings</h1><p>Choose the local Ollama model that powers your suggestions.</p></div>
       </header>
 
