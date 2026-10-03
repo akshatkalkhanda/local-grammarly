@@ -24,3 +24,8 @@ export async function activateMacApp(execFileAsync, pid) {
   const { stdout } = await execFileAsync('osascript', ['-l', 'JavaScript', '-e', script]);
   if (stdout.trim() !== 'true') throw new Error('The original app could not be activated.');
 }
+
+export function isMacInputPermissionError(error) {
+  const detail = `${error?.stderr ?? ''} ${error?.message ?? ''}`;
+  return /not allowed assistive access|not authorized to send apple events|not authorized to send keystrokes|(?:-25211|-1743)/i.test(detail);
+}

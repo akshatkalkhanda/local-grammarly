@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activateMacApp, parseFrontmostApp, readFrontmostMacApp } from '../electron/macos-app.js';
+import { activateMacApp, isMacInputPermissionError, parseFrontmostApp, readFrontmostMacApp } from '../electron/macos-app.js';
 
 test('frontmost app parsing keeps a target process and rejects our own or missing app', () => {
   assert.deepEqual(parseFrontmostApp('{"pid":123,"bundleId":"com.apple.TextEdit"}', 456), { pid: 123, bundleId: 'com.apple.TextEdit' });
@@ -26,4 +26,10 @@ test('activation requires a valid process and checks the system result', async (
   await assert.rejects(activateMacApp(async () => ({ stdout: 'false' }), 123), /could not be activated/);
   await assert.rejects(activateMacApp(async () => ({ stdout: 'true' }), 0), /Invalid source app/);
   await assert.doesNotReject(activateMacApp(async () => ({ stdout: 'true\n' }), 123));
+});
+
+test('macOS automation denial is distinguished from an ordinary paste failure', () => {
+  assert.equal(isMacInputPermissionError({ stderr: 'System Events got an error: osascript is not allowed assistive access. (-25211)' }), true);
+  assert.equal(isMacInputPermissionError({ message: 'Not authorized to send Apple events to System Events. (-1743)' }), true);
+  assert.equal(isMacInputPermissionError({ message: 'The original selection changed.' }), false);
 });
