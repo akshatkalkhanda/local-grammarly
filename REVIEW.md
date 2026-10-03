@@ -2,7 +2,7 @@
 
 ## Follow-up: copy-triggered popup focus
 
-A Langdock reproduction showed that clicking Replace could produce either “source app lost focus during selection verification” or “No selected text was copied” while the passage still looked selected. The copy-triggered popup now stays nonfocusable on macOS; its mouse buttons remain clickable without activating the assistant. Typing into the custom-instruction field explicitly focuses the assistant and may still clear selection in some editors. Exact selection comparison remains mandatory before paste.
+A Langdock reproduction showed that clicking Replace could produce either “source app lost focus during selection verification” or “No selected text was copied” while the passage still looked selected. The copy-triggered popup now stays nonfocusable on macOS. A disposable TextEdit run also exposed the app's global `activate` handler opening Settings when the popup was clicked; it now skips Settings while the popup is visible. Typing into the custom-instruction field explicitly focuses the assistant and may still clear selection in some editors. Exact selection comparison remains mandatory before paste.
 
 The follow-up needs a native Langdock and TextEdit smoke test after the new build starts. Unit tests cannot prove how those apps preserve their keyboard focus and selection.
 
