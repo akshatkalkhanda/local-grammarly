@@ -1,5 +1,6 @@
-import { sanitizePresets } from './presets.js';
-import { normalizeExclusions, shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
+import { DEFAULT_CONFIG, sanitizeConfig } from './config.js';
+import { readSettings, writeSettings } from './settings-store.js';
+import { shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -14,15 +15,11 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_CONFIG = {
-  url: 'http://localhost:11434',
-  model: 'qwen3:1.7b',
-  autoSuggestOnCopy: true,
-  presets: [],
-  excludedApps: [],
-  excludedWebsites: [],
-  systemPrompt: 'You are an expert copy editor. Fix grammar and improve style. Return ONLY the updated text. Do not add conversational intro/outro text.'
-};
+const legacyUserData = app.getPath('userData');
+// Keep preferences in one location across development and packaged builds.
+const settingsDirectory = path.join(app.getPath('appData'), 'AI Editor');
+
+
 const ACTIONS = {
   grammar: 'Correct grammar, spelling, and punctuation while preserving the writer\'s voice.',
   improve: 'Improve clarity, flow, and readability while preserving the meaning.',
@@ -64,26 +61,24 @@ const TONES = {
 };
 
 function configPath() {
-  return path.join(app.getPath('userData'), 'settings.json');
+  return path.join(settingsDirectory, 'settings.json');
 }
 
 function historyPath() {
-  return path.join(app.getPath('userData'), 'history.json');
+  return path.join(legacyUserData, 'history.json');
 }
 
-function sanitizeConfig(candidate = {}) {
-  const url = validateUrl(candidate.url ?? DEFAULT_CONFIG.url);
-  const model = String(candidate.model ?? DEFAULT_CONFIG.model).trim().slice(0, 160);
-  const systemPrompt = String(candidate.systemPrompt ?? DEFAULT_CONFIG.systemPrompt).trim().slice(0, 6_000);
-  if (!model || !systemPrompt) throw new Error('Model and system prompt are required.');
-  return { url, model, systemPrompt, presets: sanitizePresets(candidate.presets), excludedApps: normalizeExclusions(candidate.excludedApps), excludedWebsites: normalizeExclusions(candidate.excludedWebsites, true), autoSuggestOnCopy: candidate.autoSuggestOnCopy !== false };
-}
 
 async function loadConfig() {
-  try {
-    config = sanitizeConfig(JSON.parse(await readFile(configPath(), 'utf8')));
-  } catch {
-    config = { ...DEFAULT_CONFIG };
+  const legacyFiles = [...new Set([
+    path.join(legacyUserData, 'settings.json'),
+    path.join(app.getPath('appData'), 'grammerly-clone', 'settings.json')
+  ])].filter(file => file !== configPath());
+  const loaded = await readSettings(configPath(), DEFAULT_CONFIG, sanitizeConfig, legacyFiles);
+  config = loaded.config;
+  if (loaded.migrated) {
+    try { await writeSettings(configPath(), config); }
+    catch (error) { console.error('Could not migrate saved settings:', error); }
   }
 }
 
@@ -106,13 +101,19 @@ async function addHistory(entry) {
   catch (error) { console.error('Could not save local history:', error); }
 }
 
-async function saveConfig(candidate) {
-  config = sanitizeConfig(candidate);
-  await writeFile(configPath(), JSON.stringify(config, null, 2), { mode: 0o600 });
-  for (const window of [mainWindow, settingsWindow]) {
-    if (window && !window.isDestroyed()) window.webContents.send('config-updated', config);
-  }
-  return config;
+let settingsSaveQueue = Promise.resolve();
+function saveConfig(candidate) {
+  const save = settingsSaveQueue.then(async () => {
+    const nextConfig = sanitizeConfig({ ...config, ...candidate });
+    await writeSettings(configPath(), nextConfig);
+    config = nextConfig;
+    for (const window of [mainWindow, settingsWindow]) {
+      if (window && !window.isDestroyed()) window.webContents.send('config-updated', config);
+    }
+    return config;
+  });
+  settingsSaveQueue = save.catch(() => {});
+  return save;
 }
 
 function secureWindow(window) {
@@ -136,6 +137,8 @@ function createFloatingWidget() {
     show: false,
     frame: false,
     transparent: true,
+    hasShadow: false,
+    backgroundColor: '#00000000',
     ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
     // A copied-text popup must not steal keyboard focus from the editor. On
     // macOS, activating this window can clear a web editor's selection.

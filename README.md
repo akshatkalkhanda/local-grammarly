@@ -227,3 +227,11 @@ In the assistant's action panel, choose **Normal** for natural writing without a
 Open **Settings → Custom writing presets → Add preset**, enter a name and instructions, then **Save settings**. For example, name a preset “Friendly work message” and use “Make this warm, clear and professional. Keep it brief and preserve all facts.” You can edit or remove presets in Settings; changes take effect when saved. Up to 20 presets are stored locally, with 60 characters per name and 500 per instruction. Restore defaults clears presets too.
 
 In the assistant's writing actions, choose **Writing preset**, review or adjust the filled-in custom instruction, select your tone, and click **Improve** or another action. If an automatic suggestion is already displayed, use **Back to writing actions** first. Choosing a preset does not generate or replace text by itself. Choose **No preset / custom** to clear the instruction. The filled-in instruction stays in the widget for subsequent requests during that app session; changing a saved preset does not overwrite an instruction already filled in. Results depend on the local model; review before replacing.
+
+### Moving the popup and keeping settings
+
+Drag the **AI Editor header** to move the popup; Back, Minimize and Close remain clickable. New selections still position the popup near the pointer. The popup uses a light CSS shadow with the macOS window shadow disabled to avoid the extra outline beneath it.
+
+Click **Save settings** after changing preferences and wait for the saved message. On macOS, development and packaged builds now share `~/Library/Application Support/AI Editor/settings.json`. Existing settings from the old application folder are imported when the new file is absent. Saves replace the file atomically and keep a `.bak` recovery copy. Startup recovers valid fields independently, so an invalid preset or model preference does not erase your exclusions. Settings controls wait until saved preferences finish loading. The browser preview also reloads its saved local settings.
+
+Already-reset exclusions cannot be reconstructed from an empty settings file: enter them once and save with this version, then fully quit and reopen to confirm they persist.
