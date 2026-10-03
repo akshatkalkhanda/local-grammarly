@@ -4,6 +4,7 @@ Reviewed `main` at `99e212b` and updated the paste-back flow, automatic suggesti
 
 ## Changes in this update
 
+- After a real macOS error report, source-app identification now uses AppKit's `NSWorkspace.frontmostApplication` through JXA and keeps the process ID. System Events remains a fallback. The selection shortcut preserves its initial source-app capture instead of overwriting it with a later lookup.
 - Wait for source-app capture before showing the widget. Previously that asynchronous capture could finish after the widget took focus and leave an old target in memory.
 - Before paste-back, reactivate the source app, confirm that it regained focus, and copy the current selection to compare it with the submitted text. If verification fails, keep the suggestion on the clipboard and show the widget with an error.
 - Set the one-minute Undo entry only after the paste command is sent.
@@ -58,15 +59,16 @@ For faster suggestions, first measure latency on the user's actual Mac with the 
 ## Validation performed
 
 - Dependency installation completed with the lockfile.
-- 21 regression cases passed: nine stream/URL checks, three preload IPC checks, and nine React UI checks in jsdom.
+- 24 regression cases passed: three macOS app lookup checks, nine stream/URL checks, three preload IPC checks, and nine React UI checks in jsdom.
 - `npm run lint` passed.
 - `npm run build:app` compiled the renderer and Electron main process.
+- Electron Builder packaged `release/mac-arm64/AI Editor.app` after correcting the icon file. DMG creation then failed because this execution environment's `hdiutil` returned `Device not configured`; the DMG is not a validated deliverable from this run.
 - `npm audit` reports eight high-severity findings in the electron-builder development dependency chain through `http-cache-semantics`. `npm audit fix` does not resolve them within the current dependency range. Recheck upstream builder releases before distribution.
 - `git diff --check` passed.
 
 The UI tests use a mocked desktop bridge and transformed production React components. They do not exercise macOS APIs or a real model. The test runner may summarize the three test files; running each test file directly with Node prints its individual cases.
 
-Not run here: a macOS DMG build, code signing/notarization, Accessibility/Automation prompts, native focus/paste/undo behavior, visual macOS inspection, or real Ollama latency/quality benchmarks. Automated checks ran on macOS with supported Node 24.19.0.
+Not verified here: a completed macOS DMG, code signing/notarization, Accessibility/Automation prompts, native focus/paste/undo behavior, visual macOS inspection, or real Ollama latency/quality benchmarks. Automated checks ran on macOS with supported Node 24.19.0.
 
 ## Mac smoke test before merging/releasing
 
