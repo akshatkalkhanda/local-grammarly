@@ -3,6 +3,9 @@ import { Check, ChevronDown, ChevronLeft, ClipboardPaste, Copy, Languages, Loade
 import DiffView from './DiffView';
 import BrandMark from './BrandMark';
 import { OllamaService } from '../OllamaService';
+import { toneLabels, replyLabels } from '../writing';
+import { createGenerationRequest } from '../../electron/generation';
+import PauseControl from './PauseControl';
 
 const actions = [
   { id: 'grammar', label: 'Correct', icon: Check, description: 'Grammar and spelling' },
@@ -12,7 +15,6 @@ const actions = [
   { id: 'translate', label: 'Translate', icon: Languages, description: 'English, German or Dutch' }
 ];
 
-const toneLabels = { neutral: 'Normal', emojified: 'Emojified ✨', friendly: 'Friendly', confident: 'Confident', concise: 'Concise', formal: 'Formal' };
 
 function getDesktopApi() {
   return window.electronAPI ?? null;
@@ -27,15 +29,36 @@ export default function FloatingWidget({ config }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [notice, setNotice] = useState('');
   const [isReplacing, setIsReplacing] = useState(false);
-  const [tone, setTone] = useState('neutral');
-  const [customInstruction, setCustomInstruction] = useState('');
-  const [translationTarget, setTranslationTarget] = useState('English');
+  const [tone, setTone] = useState(config.preferences?.tone ?? 'neutral');
+  const [presetId, setPresetId] = useState(config.preferences?.presetId ?? '');
+  const [replyAction, setReplyAction] = useState('reply');
+  const [preview, setPreview] = useState('changes');
+  const [customInstruction, setCustomInstruction] = useState(() => config.presets?.find(preset => preset.id === config.preferences?.presetId)?.instruction ?? '');
+  const [translationTarget, setTranslationTarget] = useState(config.preferences?.translationTarget ?? 'English');
   const requestVersion = useRef(0);
   const generationActive = useRef(false);
   const [automaticRequest, setAutomaticRequest] = useState(null);
   const handledAutomaticRequest = useRef(0);
   const selectionTooLong = selectedText.length > 20_000;
   const wordCount = useMemo(() => selectedText ? selectedText.trim().split(/\s+/).length : 0, [selectedText]);
+
+  const remember = (patch) => {
+    const desktop = getDesktopApi();
+    if (desktop) {
+      desktop.savePreferences?.(patch).catch(error => setNotice(`Could not remember preference: ${error.message}`));
+    } else {
+      try {
+        const stored = JSON.parse(localStorage.getItem('ai-editor-config') ?? '{}');
+        localStorage.setItem('ai-editor-config', JSON.stringify({ ...stored, preferences: { ...stored.preferences, ...patch } }));
+      } catch { setNotice('Could not save writing preferences.'); }
+    }
+  };
+  const choosePreset = (id) => {
+    const preset = config.presets?.find(item => item.id === id);
+    setPresetId(preset?.id ?? '');
+    setCustomInstruction(preset?.instruction ?? '');
+    remember({ presetId: preset?.id ?? '' });
+  };
 
   useEffect(() => {
     const desktop = getDesktopApi();
@@ -65,7 +88,7 @@ export default function FloatingWidget({ config }) {
     };
   }, [config.autoSuggestOnCopy]);
 
-  const requestSuggestion = useCallback(async (action = activeAction, text = selectedText) => {
+  const requestSuggestion = useCallback(async (action = activeAction, text = selectedText, instruction = customInstruction) => {
     if (!text.trim() || generationActive.current || text.length > 20_000) return;
     generationActive.current = true;
     const version = ++requestVersion.current;
@@ -73,13 +96,17 @@ export default function FloatingWidget({ config }) {
     setSuggestion('');
     setNotice('');
     setActiveAction(action);
+    setPreview(action.startsWith('reply') ? 'after' : 'changes');
     try {
       const desktop = getDesktopApi();
       const response = desktop
-        ? await desktop.generateStream(action, text, tone, customInstruction, translationTarget, (chunk) => {
+        ? await desktop.generateStream(action, text, tone, instruction, translationTarget, (chunk) => {
           if (version === requestVersion.current) setSuggestion((current) => current + chunk);
         })
-        : await new OllamaService(config.url).generateSuggestion(config.model, `${action}. Tone: ${toneLabels[tone]}. ${tone === 'emojified' ? 'Add a few relevant emojis without replacing words or changing meaning.' : tone === 'neutral' ? 'Do not add new emojis.' : ''}${customInstruction ? `\nAdditional instruction: ${customInstruction}` : ''}\n${text}`, config.systemPrompt);
+        : await (() => {
+          const request = createGenerationRequest(config, action, text, tone, instruction, translationTarget);
+          return new OllamaService(config.url).generateSuggestion(config.model, request.prompt, request.system);
+        })();
       if (version !== requestVersion.current) return;
       if (!response) throw new Error('Ollama returned an empty suggestion.');
       setSuggestion(response);
@@ -93,7 +120,7 @@ export default function FloatingWidget({ config }) {
         setIsGenerating(false);
       }
     }
-  }, [activeAction, selectedText, tone, customInstruction, translationTarget, config.url, config.model, config.systemPrompt]);
+  }, [activeAction, selectedText, tone, customInstruction, translationTarget, config]);
 
   useEffect(() => {
     if (!automaticRequest || handledAutomaticRequest.current === automaticRequest.id) return;
@@ -182,15 +209,16 @@ export default function FloatingWidget({ config }) {
         <section className="action-panel">
           <p className="selection-summary"><strong>{wordCount} words selected</strong><span>{selectedText.slice(0, 92)}{selectedText.length > 92 ? '…' : ''}</span></p>
           <div className="writing-controls">
-            <label>Tone<select value={tone} onChange={(event) => setTone(event.target.value)} disabled={isGenerating}>{Object.entries(toneLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Translate to<select value={translationTarget} onChange={(event) => setTranslationTarget(event.target.value)} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
-            {(config.presets ?? []).length > 0 && <label className="preset-picker">Writing preset<select aria-label="Writing preset" value={(config.presets ?? []).find(preset => preset.instruction === customInstruction)?.id ?? ''} onChange={event => setCustomInstruction((config.presets ?? []).find(preset => preset.id === event.target.value)?.instruction ?? '')} disabled={isGenerating}><option value="">No preset / custom</option>{config.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>}
-            <input className="custom-instruction" value={customInstruction} onChange={(event) => setCustomInstruction(event.target.value)} onClick={async (event) => {
+            <label>Tone<select value={tone} onChange={(event) => { setTone(event.target.value); remember({ tone: event.target.value }); }} disabled={isGenerating}>{Object.entries(toneLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Translate to<select value={translationTarget} onChange={(event) => { setTranslationTarget(event.target.value); remember({ translationTarget: event.target.value }); }} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
+            {(config.presets ?? []).length > 0 && <label className="preset-picker">Writing preset<select aria-label="Writing preset" value={config.presets?.some(preset => preset.id === presetId) ? presetId : ''} onChange={event => choosePreset(event.target.value)} disabled={isGenerating}><option value="">No preset / custom</option>{config.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>}
+            <input className="custom-instruction" value={customInstruction} onChange={(event) => { setCustomInstruction(event.target.value); if (presetId) { setPresetId(''); remember({ presetId: '' }); } }} onClick={async (event) => {
               const input = event.currentTarget;
               await getDesktopApi()?.focusWidget?.();
               input.focus();
             }} disabled={isGenerating} maxLength={500} placeholder="Custom instruction (optional)" aria-label="Custom writing instruction" />
           </div>
+          {config.presets?.some(preset => preset.favorite) && <div className="favorite-presets" aria-label="Favorite presets">{config.presets.filter(preset => preset.favorite).map(preset => <button className="secondary-button" key={preset.id} disabled={selectionTooLong} onClick={() => { choosePreset(preset.id); requestSuggestion('improve', selectedText, preset.instruction); }}>★ {preset.name}</button>)}</div>}
           <div className="action-grid">
             {actions.map(({ id, label, icon: Icon, description }) => (
               <button key={id} className={`action-button ${activeAction === id ? 'is-active' : ''}`} onClick={() => requestSuggestion(id)} disabled={isGenerating || selectionTooLong}>
@@ -199,22 +227,30 @@ export default function FloatingWidget({ config }) {
               </button>
             ))}
           </div>
+          <div className="quick-reply">
+            <label>Quick reply<select aria-label="Reply intent" value={replyAction} onChange={event => setReplyAction(event.target.value)}>{Object.entries(replyLabels).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
+            <button className="secondary-button" disabled={selectionTooLong || (replyAction === 'reply_custom' && !customInstruction.trim())} onClick={() => requestSuggestion(replyAction)}>Draft reply</button>
+          </div>
+          <p className="widget-hint">Use your selected notes for “Polish my notes”, or select the incoming message for other reply options. Custom reply uses the instruction above.</p>
           <p className="widget-hint">Copy selected text to check grammar automatically. Review the result before replacing text.</p>
         </section>
       ) : (
         <section className="suggestion-panel">
-          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${toneLabels[tone] ?? tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
+          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{replyLabels[activeAction] ?? actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${toneLabels[tone] ?? tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
           {suggestion
             ? <>
-              <DiffView originalText={selectedText} correctedText={suggestion} />
+              <div className="preview-tabs" aria-label="Preview mode">{[['changes', 'Changes'], ['before', 'Before'], ['after', 'After']].map(([id, label]) => <button key={id} aria-pressed={preview === id} onClick={() => setPreview(id)}>{label}</button>)}</div>
+              {preview === 'changes' ? <DiffView originalText={selectedText} correctedText={suggestion} /> : <div className="diff-container clean-preview">{preview === 'before' ? selectedText : suggestion}</div>}
+              {activeAction.startsWith('reply') && <p className="widget-hint">Reply draft: copy it into your reply field, review, then send yourself.</p>}
               <div className="suggestion-actions">
                 <button className="secondary-button" onClick={copySuggestion} disabled={isGenerating || isReplacing}><Copy size={15} />Copy</button>
-                <button className="primary-button" onClick={replaceText} disabled={isGenerating || isReplacing}><ClipboardPaste size={15} />{isReplacing ? 'Replacing…' : 'Replace text'}</button>
+                {!activeAction.startsWith('reply') && <button className="primary-button" onClick={replaceText} disabled={isGenerating || isReplacing}><ClipboardPaste size={15} />{isReplacing ? 'Replacing…' : 'Replace text'}</button>}
               </div>
             </>
-            : <div className="generation-status" role="status"><Loader2 size={17} className="loader" /><span>Checking grammar… Your text stays unchanged until you choose an action.</span></div>}
+            : <div className="generation-status" role="status"><Loader2 size={17} className="loader" /><span>{activeAction === 'grammar' ? 'Checking grammar…' : activeAction.startsWith('reply') ? 'Drafting your reply…' : 'Preparing your suggestion…'} Your text stays unchanged until you choose an action.</span></div>}
         </section>
       )}
+      <PauseControl config={config} />
       {isGenerating && <button className="text-button" onClick={cancelGeneration}>Cancel generation</button>}
       {selectionTooLong && <div className="widget-notice">Select at most 20,000 characters. Split longer text into smaller passages.</div>}
       {notice && <div className="widget-notice">{notice}</div>}
