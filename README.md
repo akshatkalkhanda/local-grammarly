@@ -268,7 +268,6 @@ Find **Personal dictionary**, enter one name or technical term per line and save
 
 ```text
 Akshat
-censhare
 Kubernetes
 ```
 
