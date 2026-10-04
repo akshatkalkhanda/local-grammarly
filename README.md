@@ -39,7 +39,7 @@ You need:
 
 **Check your Mac type:** click the Apple menu ** → About This Mac**. If it says **Chip: Apple M1, M2, M3…**, you have an Apple Silicon Mac. If it says **Intel**, you have an Intel Mac.
 
-The installer named `AI Editor-0.0.0-arm64.dmg` is for **Apple Silicon**. It is not an Intel installer. An Intel Mac needs a build made for its architecture; this guide's packaged installation steps assume the Apple Silicon installer.
+The installer named `AI Editor-0.1.0-arm64.dmg` is for **Apple Silicon**. It is not an Intel installer. An Intel Mac needs a build made for its architecture; this guide's packaged installation steps assume the Apple Silicon installer.
 
 **You do not need Node.js, npm or Git to install a DMG.** Those tools are only needed to build from source.
 
@@ -85,7 +85,7 @@ You can close Terminal after the download. Keep the **Ollama app** running.
 
 ### If you have the DMG installer
 
-1. Find `AI Editor-0.0.0-arm64.dmg`, usually in **Downloads**. If you built it yourself, it is in the project's **release** folder.
+1. Find `AI Editor-0.1.0-arm64.dmg`, usually in **Downloads**. If you built it yourself, it is in the project's **release** folder.
 2. Double-click the DMG to open it.
 3. Drag **AI Editor.app** into **Applications**. If the DMG window does not show an Applications shortcut, open a second Finder window at Applications and drag the app there.
 4. Open Finder → **Applications** and double-click **AI Editor**.
@@ -197,11 +197,11 @@ Copy and Replace become available after generation finishes successfully. New co
 
 ## 8. Customize the assistant
 
-Open **menu-bar icon → Settings** to change saved settings. Look for the section headings below; their position can vary between app builds.
+Open **menu-bar icon → Settings** to change saved settings. Use **General** for Connection and automatic suggestions, **Writing** for instructions, presets and dictionary, **Privacy** for exclusions, and **History** for recent suggestions.
 
 ### Tone and custom instructions
 
-In the popup's writing actions, choose **Normal**, **Emojified ✨**, **Friendly**, **Confident**, **Concise** or **Formal**, then run an action. In builds with a **Customize your writing** control, expand it to reveal these options.
+In the popup's writing actions, choose **Normal**, **Emojified ✨**, **Friendly**, **Confident**, **Concise** or **Formal**, then run an action. Expand **Customize your writing** to reveal these options.
 
 Use the custom instruction field for directions such as “Use British English”, “Keep product names unchanged” or “Keep it under 80 words”. These guide the model; always check the result.
 
@@ -367,7 +367,18 @@ Use this section only if you want to develop the app or do not have a DMG instal
    git --version
    ```
 
-### B. Download the project
+### B. Download or update the project
+
+If you already cloned this repository, quit AI Editor and stop any development run with **Control + C**. Then, from the project folder, run:
+
+```bash
+git pull --ff-only
+npm ci
+```
+
+If Git reports local changes or divergent branches, resolve those before building; do not delete your work just to update.
+
+For a first download:
 
 Run these commands one line at a time:
 
@@ -381,13 +392,21 @@ If you already have the project, open Terminal in that folder instead of cloning
 
 ### C. Choose how to run it
 
-**To create an installer:**
+**To create both the app and DMG installer:**
 
 ```bash
 npm run build
 ```
 
-Wait for the command to finish successfully. On an Apple Silicon Mac, look in `release/` for `AI Editor-0.0.0-arm64.dmg`. Install it using [section 4](#4-install-ai-editor). Builds currently have no configured distribution signing or notarization.
+Wait for the command to finish successfully. On an Apple Silicon Mac, look in `release/` for `AI Editor-0.1.0-arm64.dmg`. The application is also available at `release/mac-arm64/AI Editor.app`. Install from the DMG using [section 4](#4-install-ai-editor), or copy that app to Applications. Builds currently have no configured distribution signing or notarization.
+
+To create just the `.app` without a DMG:
+
+```bash
+npm run build:dir
+```
+
+**Confirm the new UI:** open Settings. You should see **General / Writing / Privacy / History** in the sidebar and **Version 0.1.0** at the bottom. The popup has **Customize your writing** below its action buttons. If you see the old layout, quit the old app, install the newly built copy in Applications and launch that copy. `npm run build:app` only compiles source; it does not create or install a `.app` or DMG.
 
 **To run while developing:**
 
@@ -404,7 +423,8 @@ Keep this terminal running. The app starts in the menu bar. Use Settings to sele
 | `npm test` | Automated protocol, persistence, IPC and React UI regression tests |
 | `npm run lint` | JavaScript/React lint checks |
 | `npm run build:app` | Compiles into `dist/` and `dist-electron/`; does not install the app |
-| `npm run build` | Compiles and packages the macOS DMG in `release/` |
+| `npm run build` | Creates the `.app` and macOS DMG in `release/` |
+| `npm run build:dir` | Creates only the packaged `.app` |
 | `npm run test:electron` | Builds and runs the isolated native Electron smoke suite |
 | `npm run dev` | Starts Vite and Electron for development |
 | `npm run preview` | Browser-only UI preview; not the desktop app |

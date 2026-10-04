@@ -196,7 +196,7 @@ export default function FloatingWidget({ config }) {
   return (
     <main className="widget-shell" aria-live="polite">
       <header className="widget-header" title="Drag to move the assistant">
-        <div className="widget-brand"><BrandMark className="brand-mark" />AI Editor</div>
+        <div className="widget-brand"><BrandMark className="brand-mark" /><div>AI Editor<span className="widget-subtitle">Your writing, a little clearer</span></div></div>
         <div className="widget-header-actions">
           {suggestion && !isGenerating
             ? <button className="icon-button" onClick={returnToActions} title="Back to writing actions" aria-label="Back to writing actions"><ChevronLeft size={17} /></button>
@@ -207,7 +207,16 @@ export default function FloatingWidget({ config }) {
 
       {!suggestion && !isGenerating ? (
         <section className="action-panel">
-          <p className="selection-summary"><strong>{wordCount} words selected</strong><span>{selectedText.slice(0, 92)}{selectedText.length > 92 ? '…' : ''}</span></p>
+          <p className="selection-summary"><strong>YOUR SELECTION · {wordCount} words selected</strong><span>{selectedText.slice(0, 160)}{selectedText.length > 160 ? '…' : ''}</span></p>
+          <div className="action-grid">
+            {actions.map(({ id, label, icon: Icon, description }) => (
+              <button key={id} className={`action-button ${activeAction === id ? 'is-active' : ''}`} onClick={() => requestSuggestion(id)} disabled={isGenerating || selectionTooLong}>
+                {isGenerating && activeAction === id ? <Loader2 size={16} className="loader" /> : <Icon size={16} />}
+                <span>{label}<small>{description}</small></span>
+              </button>
+            ))}
+          </div>
+          <details className="writing-options"><summary>Customize your writing <ChevronDown size={14} /></summary>
           <div className="writing-controls">
             <label>Tone<select value={tone} onChange={(event) => { setTone(event.target.value); remember({ tone: event.target.value }); }} disabled={isGenerating}>{Object.entries(toneLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Translate to<select value={translationTarget} onChange={(event) => { setTranslationTarget(event.target.value); remember({ translationTarget: event.target.value }); }} disabled={isGenerating}><option value="English">English</option><option value="German">German</option><option value="Dutch">Dutch</option></select></label>
@@ -219,20 +228,13 @@ export default function FloatingWidget({ config }) {
             }} disabled={isGenerating} maxLength={500} placeholder="Custom instruction (optional)" aria-label="Custom writing instruction" />
           </div>
           {config.presets?.some(preset => preset.favorite) && <div className="favorite-presets" aria-label="Favorite presets">{config.presets.filter(preset => preset.favorite).map(preset => <button className="secondary-button" key={preset.id} disabled={selectionTooLong} onClick={() => { choosePreset(preset.id); requestSuggestion('improve', selectedText, preset.instruction); }}>★ {preset.name}</button>)}</div>}
-          <div className="action-grid">
-            {actions.map(({ id, label, icon: Icon, description }) => (
-              <button key={id} className={`action-button ${activeAction === id ? 'is-active' : ''}`} onClick={() => requestSuggestion(id)} disabled={isGenerating || selectionTooLong}>
-                {isGenerating && activeAction === id ? <Loader2 size={16} className="loader" /> : <Icon size={16} />}
-                <span>{label}<small>{description}</small></span>
-              </button>
-            ))}
-          </div>
           <div className="quick-reply">
             <label>Quick reply<select aria-label="Reply intent" value={replyAction} onChange={event => setReplyAction(event.target.value)}>{Object.entries(replyLabels).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
             <button className="secondary-button" disabled={selectionTooLong || (replyAction === 'reply_custom' && !customInstruction.trim())} onClick={() => requestSuggestion(replyAction)}>Draft reply</button>
           </div>
           <p className="widget-hint">Use your selected notes for “Polish my notes”, or select the incoming message for other reply options. Custom reply uses the instruction above.</p>
-          <p className="widget-hint">Copy selected text to check grammar automatically. Review the result before replacing text.</p>
+          </details>
+          <p className="widget-hint">Review each suggestion. You choose when to replace your text.</p>
         </section>
       ) : (
         <section className="suggestion-panel">

@@ -118,7 +118,7 @@ function createFloatingWidget() {
   widgetReady = false;
   mainWindow = new BrowserWindow({
     width: 480,
-    height: 420,
+    height: 560,
     minWidth: 420,
     minHeight: 160,
     show: false,
@@ -164,9 +164,9 @@ function createSettingsWindow() {
     return;
   }
   settingsWindow = new BrowserWindow({
-    width: 680,
+    width: 920,
     height: 740,
-    minWidth: 580,
+    minWidth: 680,
     minHeight: 620,
     title: 'AI Editor Settings',
     titleBarStyle: 'hiddenInset',

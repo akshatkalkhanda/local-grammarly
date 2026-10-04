@@ -361,3 +361,21 @@ test('runtime pause and preference broadcasts preserve an unsaved Settings draft
   assert.ok(document.querySelector('[aria-label="Preset 1 name"]'));
   assert.match(document.body.textContent, /Paused until/);
 });
+
+test('switching Settings categories preserves an unsaved preset change for saving', async t => {
+  let saved;
+  function StatefulSettings() {
+    const [value, setValue] = React.useState({ ...config, presets: [{ id: 'work', name: 'Work', instruction: 'Be brief.' }] });
+    return React.createElement(Settings, { config: value, setConfig: setValue });
+  }
+  const ui = await mount(t, StatefulSettings, { api: { saveConfig: async value => { saved = value; return value; } } });
+  const navigate = async name => act(async () => [...document.querySelectorAll('.settings-nav')].find(button => button.textContent === name).click());
+  await navigate('Writing');
+  await act(async () => document.querySelector('[aria-label="Remove preset 1"]').click());
+  await navigate('Privacy');
+  assert.equal(document.querySelector('[name="excludedApps"]').closest('section').hidden, false);
+  await navigate('Writing');
+  assert.equal(document.querySelector('[aria-label="Preset 1 name"]'), null);
+  await ui.click('Save settings');
+  assert.deepEqual(saved.presets, []);
+});
