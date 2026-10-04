@@ -207,3 +207,56 @@ See [REVIEW.md](REVIEW.md) for review findings, remaining limitations, suggested
 Created by **Akshat Kalkhanda** — [akshatkalkhanda@gmail.com](mailto:akshatkalkhanda@gmail.com).
 
 There is currently no LICENSE file in the repository. The owner should choose a license before presenting this as an open-source distribution with reuse permissions.
+
+### Exclude apps and websites from popups
+
+Open the menu bar icon → **Settings → Popup exclusions**. Enter one exact app name or bundle ID per line (for example `Terminal`, `iTerm2`, or `com.apple.Terminal`). Enter website domains such as `example.com` or `mail.google.com` in the website list, then click **Save settings**. Remove a line and save to enable that source again. Exclusions persist across restarts. Restore defaults clears both lists.
+
+Domains include their subdomains. Pasting a full URL excludes its entire domain, not just that page. Exclusions suppress automatic clipboard popups before generation; the tray's **Open assistant for clipboard** and the selection shortcut remain available on demand.
+
+App identification and website filtering are macOS features. Safari and supported Chromium browsers (Chrome, Edge, Brave, Vivaldi, Opera and Arc) expose their active tab through Apple Events. macOS may ask you to allow AI Editor/Electron to control the browser; allow this under **Privacy & Security → Automation** for website filtering. With a nonempty website list, automatic popups are suppressed in these browsers if the URL is unavailable or permission is denied, and in Firefox, which does not expose its tab this way. Other browsers and embedded web views cannot reliably be filtered by domain: exclude their whole app instead. URLs are used locally for matching and are not stored or sent to Ollama.
+
+The clipboard does not identify its source: the app samples the foreground app when it notices a clipboard change. Switching tabs/apps immediately after copying can make attribution unreliable. This feature controls popup convenience; it is not a security boundary for clipboard contents.
+
+### Writing tones
+
+In the assistant's action panel, choose **Normal** for natural writing without added emojis, or **Emojified ✨** for a friendly version with a few relevant emojis. Then choose a writing action such as **Improve**. Emojified asks the model to preserve meaning and words, avoid emoji overload, and keep serious messages appropriate. Friendly, Confident, Concise and Formal remain available. Always review the result before choosing **Replace text**; actual emoji choices depend on your Ollama model.
+
+### Custom writing presets
+
+Open **Settings → Custom writing presets → Add preset**, enter a name and instructions, then **Save settings**. For example, name a preset “Friendly work message” and use “Make this warm, clear and professional. Keep it brief and preserve all facts.” You can edit or remove presets in Settings; changes take effect when saved. Up to 20 presets are stored locally, with 60 characters per name and 500 per instruction. Restore defaults clears presets too.
+
+In the assistant's writing actions, choose **Writing preset**, review or adjust the filled-in custom instruction, select your tone, and click **Improve** or another action. If an automatic suggestion is already displayed, use **Back to writing actions** first. Choosing a preset does not generate or replace text by itself. Choose **No preset / custom** to clear the instruction. The filled-in instruction stays in the widget for subsequent requests during that app session; changing a saved preset does not overwrite an instruction already filled in. Results depend on the local model; review before replacing.
+
+### Moving the popup and keeping settings
+
+Drag the **AI Editor header** to move the popup; Back, Minimize and Close remain clickable. New selections still position the popup near the pointer. The popup uses a light CSS shadow with the macOS window shadow disabled to avoid the extra outline beneath it.
+
+Click **Save settings** after changing preferences and wait for the saved message. On macOS, development and packaged builds now share `~/Library/Application Support/AI Editor/settings.json`. Existing settings from the old application folder are imported when the new file is absent. Saves replace the file atomically and keep a `.bak` recovery copy. Startup recovers valid fields independently, so an invalid preset or model preference does not erase your exclusions. Settings controls wait until saved preferences finish loading. The browser preview also reloads its saved local settings.
+
+Already-reset exclusions cannot be reconstructed from an empty settings file: enter them once and save with this version, then fully quit and reopen to confirm they persist.
+
+### Quick reply
+
+In writing actions, choose a **Quick reply** intent and click **Draft reply**:
+
+- **Polish my notes:** select your own short notes, such as “yes, tomorrow works”.
+- **Accept**, **Decline politely**, **Ask for details:** select the incoming message you want to answer.
+- **Custom reply:** select the incoming message and put your directions in the custom instruction field.
+
+Reply drafts offer **Copy** so you can paste into the actual reply field. They never send a message or replace the incoming message. Your tone and selected preset also apply. Review facts and commitments before sending; model output can still be wrong.
+
+### Pause automatic popups
+
+Use **Pause assistant** in the menu bar, the popup footer, or Settings. Choose **15 minutes**, **1 hour**, or **Until tomorrow (midnight)** in your local timezone. **Resume now** ends the pause early. Pausing closes the current popup and cancels its generation. The deadline is saved across restarts; automatic popups resume after it expires. Text copied while paused is not replayed on resume. Manual opening through the tray or selection shortcut still works.
+
+### Dictionary, preview and favorites
+
+- **Personal dictionary:** Settings → Personal dictionary. Enter one name, technical term, or phrase per line and save. Up to 200 entries of 80 characters each are included in model instructions. This guides preservation; it does not guarantee exact model output.
+- **Before / After:** use **Changes**, **Before**, or **After** above the suggestion to see highlighted edits, the original, or a clean result. Copy and Replace always use the generated suggestion, even while viewing Before.
+- **Favorite presets:** check **Show as a favorite button** on a preset and save Settings. Its star button in the popup runs **Improve** with that preset in one click, then waits for review.
+- **Remembered preferences:** changing tone, translation language, or selected preset automatically saves that choice. The next app session restores it. These choices also apply to automatic grammar suggestions. Custom instructions typed by hand last only for the current session; choosing No preset clears the remembered preset. Settings saves do not undo a running pause or newer writing preferences.
+
+### Native smoke test
+
+Run `npm run test:electron` on macOS to build and exercise the actual Electron main process, preload bridge and renderer twice in succession. It uses temporary settings, a mocked clipboard, disabled shortcut registration/permission prompts, and mocked model responses. It verifies pause/resume, settings writes, stale Settings saves, favorites, reply review, and restoring preferences after a fresh process launch. It does not test real Ollama quality, real macOS permissions, or copying/pasting into other applications. Run `npm test`, `npm run lint`, and `npm run build` for the full regular checks and packaging.

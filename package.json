@@ -11,7 +11,8 @@
     "lint": "oxlint --ignore-pattern dist --ignore-pattern dist-electron --ignore-pattern release",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
-    "build:app": "vite build"
+    "build:app": "vite build",
+    "test:electron": "npm run build:app && node scripts/test-electron.cjs"
   },
   "dependencies": {
     "lucide-react": "^1.31.0",
