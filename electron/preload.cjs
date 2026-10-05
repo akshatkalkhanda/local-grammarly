@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  checkGrammar: (text) => ipcRenderer.invoke('grammar:check', text),
   setPause: (duration) => ipcRenderer.invoke('assistant:pause', duration),
   savePreferences: (preferences) => ipcRenderer.invoke('preferences:save', preferences),
   getConfig: () => ipcRenderer.invoke('config:get'),

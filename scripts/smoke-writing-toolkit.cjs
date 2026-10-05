@@ -12,7 +12,11 @@ const assert = require('node:assert/strict');
   clipboard.readText = () => clipboardText;
   globalShortcut.register = () => true;
   systemPreferences.isTrustedAccessibilityClient = () => true;
-  global.fetch = async () => new Response(JSON.stringify({ response: 'Thanks for the invitation, but I cannot make it.', done: true }) + '\n', { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
+  let modelRequests = 0;
+  global.fetch = async () => {
+    modelRequests += 1;
+    return new Response(JSON.stringify({ response: 'Thanks for the invitation, but I cannot make it.', done: true }) + '\n', { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
+  };
   await import(require('node:url').pathToFileURL(path.join(process.env.AI_EDITOR_SMOKE_APP_ROOT || path.join(__dirname, '..'), 'dist-electron/main.js')).href);
   let window;
   for (let i = 0; i < 100; i++) {
@@ -50,6 +54,16 @@ const assert = require('node:assert/strict');
   config.excludedApps = ['terminal'];
   config.presets = [{ id: 'work', name: 'Work', instruction: 'Be brief.', favorite: true }];
   await run(`window.electronAPI.saveConfig(${JSON.stringify(config)})`);
+  const localResult = await run("window.electronAPI.checkGrammar('I has a apple today.')");
+  assert.equal(localResult.suggestion, 'I have an apple today.');
+  assert.equal((await run("window.electronAPI.checkGrammar('I would like some help.')")).suggestion, '');
+  assert.equal(modelRequests, 0, 'Offline grammar checking must not call Ollama');
+  for (const text of ['Please help', 'Please help me', 'https://example.com']) {
+    clipboardText = text;
+    await new Promise(resolve => setTimeout(resolve, 350));
+    assert.equal(window.isVisible(), false, `Unexpected popup for ${text}`);
+  }
+  console.log('PASS: real Harper worker and IPC corrected text without Ollama; short phrases and URLs stayed quiet.');
   await run("window.electronAPI.setPause('15m')");
   clipboardText = 'New disposable copy while paused';
   await new Promise(resolve => setTimeout(resolve, 500));

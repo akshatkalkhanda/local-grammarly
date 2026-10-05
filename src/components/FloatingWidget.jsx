@@ -24,6 +24,7 @@ export default function FloatingWidget({ config }) {
   const [selectedText, setSelectedText] = useState('');
   const [selectionId, setSelectionId] = useState(null);
   const [suggestion, setSuggestion] = useState('');
+  const [isLocalSuggestion, setIsLocalSuggestion] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeAction, setActiveAction] = useState('grammar');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -74,10 +75,16 @@ export default function FloatingWidget({ config }) {
       setIsGenerating(false);
       setSelectedText(text);
       setSelectionId(typeof selection === 'string' ? null : selection.selectionId);
-      setSuggestion('');
-      setNotice('');
+      const localCheck = typeof selection === 'string' ? null : selection.localCheck;
+      const showLocal = config.autoSuggestOnCopy === true && Boolean(localCheck?.suggestion);
+      setSuggestion(showLocal ? localCheck.suggestion : '');
+      setIsLocalSuggestion(showLocal);
+      setNotice(showLocal ? 'Offline grammar check · Harper. Review before replacing.' : '');
+      setActiveAction('grammar');
+      setPreview('changes');
+      setAutomaticRequest(null);
       setIsExpanded(config.autoSuggestOnCopy === true);
-      if (config.autoSuggestOnCopy === true) setAutomaticRequest({ text, id: Date.now() + Math.random() });
+      if (config.autoSuggestOnCopy === true && !showLocal) setAutomaticRequest({ text, id: Date.now() + Math.random() });
     });
     desktop.ready();
     return () => {
@@ -88,17 +95,28 @@ export default function FloatingWidget({ config }) {
     };
   }, [config.autoSuggestOnCopy]);
 
-  const requestSuggestion = useCallback(async (action = activeAction, text = selectedText, instruction = customInstruction) => {
+  const requestSuggestion = useCallback(async (action = activeAction, text = selectedText, instruction = customInstruction, automatic = false) => {
     if (!text.trim() || generationActive.current || text.length > 20_000) return;
     generationActive.current = true;
     const version = ++requestVersion.current;
     setIsGenerating(true);
     setSuggestion('');
+    setIsLocalSuggestion(false);
     setNotice('');
     setActiveAction(action);
     setPreview(action.startsWith('reply') ? 'after' : 'changes');
     try {
       const desktop = getDesktopApi();
+      if (action === 'grammar' && desktop?.checkGrammar && (automatic || (tone === 'neutral' && !instruction.trim()))) {
+        const result = await desktop.checkGrammar(text);
+        if (version !== requestVersion.current) return;
+        setSuggestion(result.suggestion);
+        setIsLocalSuggestion(Boolean(result.suggestion));
+        setNotice(result.suggestion ? 'Offline grammar check · Harper. Review before replacing.'
+          : result.supported ? 'Harper found no issues. Use Improve for an AI rewrite.'
+            : 'Offline grammar checking supports English. Use Improve or Translate with Ollama for this text.');
+        return;
+      }
       const response = desktop
         ? await desktop.generateStream(action, text, tone, instruction, translationTarget, (chunk) => {
           if (version === requestVersion.current) setSuggestion((current) => current + chunk);
@@ -125,7 +143,7 @@ export default function FloatingWidget({ config }) {
   useEffect(() => {
     if (!automaticRequest || handledAutomaticRequest.current === automaticRequest.id) return;
     handledAutomaticRequest.current = automaticRequest.id;
-    requestSuggestion('grammar', automaticRequest.text);
+    requestSuggestion('grammar', automaticRequest.text, '', true);
   }, [automaticRequest, requestSuggestion]);
 
   const cancelGeneration = () => {
@@ -238,7 +256,7 @@ export default function FloatingWidget({ config }) {
         </section>
       ) : (
         <section className="suggestion-panel">
-          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{replyLabels[activeAction] ?? actions.find(({ id }) => id === activeAction)?.label}{activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${toneLabels[tone] ?? tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
+          <div className="suggestion-heading"><div><span>{isGenerating ? 'Checking copied text' : 'Ready for review'}</span><strong>{replyLabels[activeAction] ?? actions.find(({ id }) => id === activeAction)?.label}{isLocalSuggestion ? ' · Offline' : activeAction === 'translate' ? ` → ${translationTarget}` : ` · ${toneLabels[tone] ?? tone}`}</strong></div>{!isGenerating && <button className="text-button" onClick={() => requestSuggestion()} disabled={isReplacing}><RefreshCw size={14} />Try again</button>}</div>
           {suggestion
             ? <>
               <div className="preview-tabs" aria-label="Preview mode">{[['changes', 'Changes'], ['before', 'Before'], ['after', 'After']].map(([id, label]) => <button key={id} aria-pressed={preview === id} onClick={() => setPreview(id)}>{label}</button>)}</div>
