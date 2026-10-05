@@ -240,6 +240,8 @@ Pausing closes the current popup and cancels generation. The deadline survives r
 
 ### Exclude apps and websites
 
+URL-only text (one link or a list of links) is automatically excluded from popups and AI processing, including manual opening. This covers full URLs, `www.example.com` and bare domains such as `example.com/path`. Sentences containing a link can still receive suggestions.
+
 1. Find **Popup exclusions** in Settings.
 2. Under **Excluded apps**, enter one exact app name or bundle ID per line:
 

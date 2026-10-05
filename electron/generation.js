@@ -1,3 +1,5 @@
+import { isUrlOnlyText } from './exclusions.js';
+
 const ACTIONS = {
   reply: 'Turn the writer’s short notes into a complete, concise reply. Preserve their intended meaning.',
   reply_accept: 'Draft a short reply accepting the request or invitation in the incoming message.',
@@ -27,6 +29,7 @@ export function createGenerationRequest(config, action, text, tone = 'neutral', 
   const source = String(text ?? '');
   if (source.length > MAX_SELECTION_LENGTH) throw new Error('Select at most 20,000 characters. Split longer text into smaller passages.');
   if (!source.trim()) throw new Error('Select some text before requesting a suggestion.');
+  if (isUrlOnlyText(source)) throw new Error('URLs are excluded from writing suggestions. Select text to process.');
   const chosenTone = Object.hasOwn(TONES, tone) ? tone : 'neutral';
   const custom = String(customInstruction ?? '').trim().slice(0, 500);
   if (action === 'reply_custom' && !custom) throw new Error('Add instructions for your custom reply.');
@@ -48,4 +51,3 @@ export function createGenerationRequest(config, action, text, tone = 'neutral', 
     }
   };
 }
-

@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeExclusions, shouldSuppressPopup, readBrowserUrl } from '../electron/exclusions.js';
+import { isUrlOnlyText, normalizeExclusions, shouldSuppressPopup, readBrowserUrl } from '../electron/exclusions.js';
+import { createGenerationRequest } from '../electron/generation.js';
 const chrome = { pid: 123, bundleId: 'com.google.Chrome', name: 'Google Chrome' };
+
+test('URL-only selections are excluded while prose containing links remains eligible', () => {
+  for (const text of [' https://example.com/path?q=hello#section\n', 'HTTP://localhost:3000', 'http://127.0.0.1:8080', 'https://[::1]:3000', 'www.example.com', 'example.com/path', 'file:///tmp/document.txt', 'https://example.com\nhttps://example.org']) {
+    assert.equal(isUrlOnlyText(text), true, text);
+    assert.throws(() => createGenerationRequest({}, 'grammar', text), /URLs are excluded/, text);
+  }
+  for (const text of ['', '   ', 'Hello world.', 'Please review https://example.com', 'name@example.com', 'https://', 'example', 'This is a sentence.\nhttps://example.com']) {
+    assert.equal(isUrlOnlyText(text), false, text);
+  }
+  assert.equal(createGenerationRequest({}, 'grammar', 'Please review https://example.com').source, 'Please review https://example.com');
+});
 
 test('normalizes persisted lists and validates domains', () => {
   assert.deepEqual(normalizeExclusions(' Terminal\niTerm2\nterminal\n'), ['terminal', 'iterm2']);

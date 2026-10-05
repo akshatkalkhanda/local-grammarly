@@ -120,6 +120,7 @@ export default function MainConfigUI({ config, setConfig }) {
 
       <section hidden={category !== 'privacy'} className="settings-card">
         <div className="settings-card-heading"><div><h2>Popup exclusions</h2><p>Skip automatic popups in these apps and websites. The keyboard shortcut and tray menu still open the assistant manually.</p></div></div>
+        <p className="field-help">URL-only text is always skipped, including when opened manually. Text containing a sentence and a link can still receive suggestions.</p>
         <label className="settings-field"><span>Excluded apps</span><textarea name="excludedApps" rows={4} value={Array.isArray(config.excludedApps) ? config.excludedApps.join('\n') : config.excludedApps ?? ''} onChange={update} placeholder={'Terminal\niTerm2\ncom.apple.Terminal'} /></label>
         <p className="field-help">One exact app name or bundle ID per line. Use Terminal or iTerm2 to silence your terminal.</p>
         <label className="settings-field"><span>Excluded websites</span><textarea name="excludedWebsites" rows={4} value={Array.isArray(config.excludedWebsites) ? config.excludedWebsites.join('\n') : config.excludedWebsites ?? ''} onChange={update} placeholder={'example.com\nmail.google.com'} /></label>

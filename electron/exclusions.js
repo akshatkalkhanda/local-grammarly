@@ -1,3 +1,20 @@
+// Only suppress selections made entirely of links; prose containing a link
+// still belongs in the writing assistant.
+export function isUrlOnlyText(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  return text.split(/\s+/).every(token => {
+    const explicitScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(token);
+    try {
+      const url = new URL(explicitScheme ? token : `https://${token}`);
+      if (explicitScheme) return Boolean(url.hostname) || (url.protocol === 'file:' && Boolean(url.pathname));
+      // Avoid treating email addresses or ordinary words as bare website URLs.
+      return !url.username && !url.password
+        && /^(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}\.?$/i.test(url.hostname);
+    } catch { return false; }
+  });
+}
+
 // Compare domains at label boundaries: example.com includes subdomains, never notexample.com.
 export function normalizeExclusions(value, websites = false) {
   const entries = Array.isArray(value) ? value : String(value ?? '').split(/\r?\n/);

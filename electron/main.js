@@ -2,7 +2,7 @@ import { createGenerationRequest } from './generation.js';
 import { isPaused, pauseDeadline } from '../src/writing.js';
 import { DEFAULT_CONFIG, sanitizeConfig } from './config.js';
 import { readSettings, writeSettings } from './settings-store.js';
-import { shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
+import { isUrlOnlyText, shouldSuppressPopup, readBrowserUrl } from './exclusions.js';
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, systemPreferences, Tray } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -230,7 +230,7 @@ function deliverPendingText() {
 
 async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
   const cleanText = String(text ?? '');
-  if (!cleanText.trim() || openingWidget) return;
+  if (!cleanText.trim() || isUrlOnlyText(cleanText) || openingWidget) return;
   openingWidget = true;
   try {
     // Record the source before the widget can take focus.
@@ -602,7 +602,7 @@ app.whenReady().then(async () => {
     const currentText = clipboard.readText();
     if (!currentText || currentText === lastClipboardText) return;
     lastClipboardText = currentText;
-    if (isPaused(config) || BrowserWindow.getFocusedWindow()) return;
+    if (isUrlOnlyText(currentText) || isPaused(config) || BrowserWindow.getFocusedWindow()) return;
     checkingExclusions = true;
     try {
       const source = await captureFrontmostApp();
