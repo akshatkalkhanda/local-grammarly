@@ -40,3 +40,22 @@ test('macOS automation denial is distinguished from an ordinary paste failure', 
   assert.equal(isMacInputPermissionError({ message: 'Not authorized to send Apple events to System Events. (-1743)' }), true);
   assert.equal(isMacInputPermissionError({ message: 'The original selection changed.' }), false);
 });
+
+test('source activation forces the editor forward after a packaged panel takes focus', async () => {
+  let script;
+  await activateMacApp(async (_command, args) => { script = args[3]; return { stdout: 'true' }; }, 123);
+  // NSApplicationActivateIgnoringOtherApps = 2. Options 0 can leave AI Editor active.
+  assert.match(script, /activateWithOptions\(2\)/);
+});
+
+test('copy and paste use physical shortcut codes and bounded automation calls', async () => {
+  const { sendMacCommandKey } = await import('../electron/macos-app.js');
+  const commands = [];
+  const exec = async (...args) => { commands.push(args); return { stdout: '' }; };
+  await sendMacCommandKey(exec, 'c');
+  await sendMacCommandKey(exec, 'v');
+  assert.match(commands[0][1][1], /key code 8 using command down/);
+  assert.match(commands[1][1][1], /key code 9 using command down/);
+  assert.equal(commands[0][2].timeout, 5000);
+  await assert.rejects(sendMacCommandKey(exec, 'a'), /Unsupported/);
+});

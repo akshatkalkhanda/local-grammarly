@@ -100,41 +100,14 @@ test('automatic grammar checking starts on copy and still requires review before
   assert.equal(ui.button('Replace text').disabled, false);
 });
 
-test('automatic Harper suggestions display without an Ollama request and preserve manual Replace', async t => {
+test('old offline payloads are ignored and automatic corrections use Ollama', async t => {
   const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: true } });
-  await ui.select('I has a apple today.', { suggestion: 'I have an apple today.', issueCount: 2, supported: true });
-  assert.equal(ui.requests.length, 0);
-  assert.ok(document.body.textContent.includes('Offline grammar check'));
-  assert.equal(ui.button('Replace text').disabled, false);
-  await ui.select('I would like some help.', { suggestion: '', issueCount: 0, supported: true });
-  assert.equal(document.body.textContent.includes('apple'), false);
-});
-
-test('automatic and normal Correct use offline IPC; other writing actions still use Ollama', async t => {
-  const checks = [];
-  const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: true }, api: {
-    checkGrammar: async text => { checks.push(text); return { suggestion: 'I have an apple today.', supported: true }; }
-  } });
-  await ui.select('I has a apple today.');
-  assert.deepEqual(checks, ['I has a apple today.']);
-  assert.equal(ui.requests.length, 0);
-  await act(async () => document.querySelector('[aria-label="Back to writing actions"]').click());
-  await ui.click('Correct');
-  assert.equal(checks.length, 2);
-  await act(async () => document.querySelector('[aria-label="Back to writing actions"]').click());
-  await ui.click('Improve');
+  await ui.select('I has a apple today.', { suggestion: 'OLD OFFLINE RESULT' });
   assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].action, 'grammar');
+  assert.equal(document.body.textContent.includes('OLD OFFLINE RESULT'), false);
   await act(async () => ui.requests[0].resolve('I have an apple today.'));
-});
-
-test('late offline grammar results cannot overwrite a newer selection', async t => {
-  const old = deferred();
-  const ui = await mount(t, Widget, { config: { ...config, autoSuggestOnCopy: true }, api: { checkGrammar: () => old.promise } });
-  await ui.select('I has a apple today.');
-  await ui.select('This is a example of text.', { suggestion: 'This is an example of text.', supported: true });
-  await act(async () => old.resolve({ suggestion: 'STALE', supported: true }));
-  assert.equal(document.body.textContent.includes('STALE'), false);
-  assert.ok(document.body.textContent.includes('example'));
+  assert.equal(ui.button('Replace text').disabled, false);
 });
 
 test('the suggestion panel can be dismissed without applying a change', async (t) => {
