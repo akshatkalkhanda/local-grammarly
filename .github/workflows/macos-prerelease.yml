@@ -1,0 +1,74 @@
+name: Publish macOS prerelease
+on:
+  push:
+    branches: [fix/macos-replace-remove-harper]
+    paths: [.github/workflows/macos-prerelease.yml]
+permissions:
+  contents: read
+concurrency:
+  group: macos-prerelease
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm version 1.2.0-beta.1 --no-git-tag-version
+      - run: npm test
+      - run: npm run lint
+      - name: Build DMG and app archives
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run build:app
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+      - name: Verify packages and generate checksums
+        run: |
+          test "$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')" = 2
+          test "$(find release -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')" = 2
+          for image in release/*.dmg; do hdiutil verify "$image"; done
+          for archive in release/*.zip; do unzip -t "$archive"; done
+          cd release
+          shasum -a 256 *.dmg *.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release
+          path: release
+      - name: Publish prerelease from the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          cat > notes.md <<'NOTES'
+          macOS replacement activation fix and removal of Harper suggestions.
+          
+          Automatic grammar suggestions use Ollama after copying eligible text. Review and click Replace to apply.
+          
+          Download the arm64 DMG/ZIP for Apple Silicon, or the x64 DMG/ZIP for Intel. ZIP archives contain AI Editor.app.
+          
+          This build is unsigned and not notarized. Native cross-app paste and installed-app permissions still need verification on your Mac. Accessibility and Automation permissions apply to the installed app, not Terminal.
+          
+          Source: PR #23, not merged. Unit/UI tests, lint, production packaging and archive integrity checks run before publication.
+          NOTES
+          gh release create v1.2.0-beta.1 release/*.dmg release/*.zip release/SHA256SUMS.txt --target "$RELEASE_COMMIT" --title "AI Editor 1.2.0 Beta 1" --notes-file notes.md --prerelease --latest=false
