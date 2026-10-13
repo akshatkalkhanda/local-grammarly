@@ -26,7 +26,7 @@ export async function readFrontmostMacApp(execFileAsync, ownPid) {
 
 export async function activateMacApp(execFileAsync, pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid source app process.');
-  const script = `ObjC.import("AppKit"); var target = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); target.isNil() ? "false" : String(target.activateWithOptions(0));`;
+  const script = `ObjC.import("AppKit"); var target = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); target.isNil() ? "false" : String(target.activateWithOptions(2));`;
   const { stdout } = await execFileAsync('osascript', ['-l', 'JavaScript', '-e', script]);
   if (stdout.trim() !== 'true') throw new Error('The original app could not be activated.');
 }
@@ -34,4 +34,12 @@ export async function activateMacApp(execFileAsync, pid) {
 export function isMacInputPermissionError(error) {
   const detail = `${error?.stderr ?? ''} ${error?.message ?? ''}`;
   return /not allowed assistive access|not authorized to send apple events|not authorized to send keystrokes|(?:-25211|-1743)/i.test(detail);
+}
+
+// Physical shortcut keys work even with a non-Latin input source. Bound the
+// automation call so a permission dialog cannot leave Replace stuck forever.
+export async function sendMacCommandKey(execFileAsync, key) {
+  const codes = { c: 8, v: 9, z: 6 };
+  if (!(key in codes)) throw new Error('Unsupported command key.');
+  return execFileAsync('osascript', ['-e', `tell application "System Events" to key code ${codes[key]} using command down`], { timeout: 5000 });
 }

@@ -2,9 +2,8 @@
 
 A Mac writing assistant powered by Ollama. Select text, copy it, review a grammar suggestion, then choose **Copy** or **Replace text**.
 
-**Beta:** automatic popups appear only when Harper finds a fix in copied English text of four or more words. Single words, short phrases such as “Please help”, URL-only selections and text without detected issues stay quiet. The app does not underline mistakes while you type. Always review the result before applying it.
+**Beta:** automatic suggestions start when you copy text of four or more words. URL-only selections stay quiet. All suggestions use your configured Ollama model; Harper has been removed. The menu or shortcut can open short text manually. Review before replacing. The app does not underline mistakes or monitor typing.
 
-Harper is bundled and runs entirely offline: automatic grammar suggestions and **Correct** with Normal tone and no custom instruction work without Ollama. Rewrites, other tones, custom instructions, replies and translation use Ollama. Use the menu or shortcut to open short or clean text manually; URLs remain excluded. Harper currently checks English and may miss errors or suggest unwanted changes.
 
 ## Start here
 

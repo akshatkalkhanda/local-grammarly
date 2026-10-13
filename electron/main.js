@@ -10,15 +10,13 @@ import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { readGenerationStream, validateCompletion, validateUrl } from './ollama.js';
-import { activateMacApp, isMacInputPermissionError, parseFrontmostPid, readFrontmostMacApp } from './macos-app.js';
+import { activateMacApp, sendMacCommandKey, isMacInputPermissionError, parseFrontmostPid, readFrontmostMacApp } from './macos-app.js';
 import { ReplacementError, replaceSelection } from './replacement.js';
 import { isAutomaticCheckCandidate } from './popup-policy.js';
-import { createLocalGrammarService } from './local-grammar-service.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const localGrammar = createLocalGrammarService(path.join(__dirname, 'local-grammar-worker.js'));
 
 const legacyUserData = app.getPath('userData');
 // Keep preferences in one location across development and packaged builds.
@@ -32,7 +30,6 @@ let tray = null;
 let widgetReady = false;
 let pendingText = '';
 let pendingFocus = false;
-let pendingLocalCheck = null;
 let isPasting = false;
 let isCapturingCopy = false;
 let lastClipboardText = '';
@@ -205,9 +202,8 @@ function positionWidget(window) {
 function deliverPendingText() {
   if (!widgetReady || !pendingText || !mainWindow || mainWindow.isDestroyed()) return;
   positionWidget(mainWindow);
-  mainWindow.webContents.send('text-selected', { text: pendingText, selectionId, localCheck: pendingLocalCheck });
+  mainWindow.webContents.send('text-selected', { text: pendingText, selectionId });
   pendingText = '';
-  pendingLocalCheck = null;
   if (pendingFocus) {
     if (process.platform === 'darwin') mainWindow.setFocusable(true);
     mainWindow.show();
@@ -233,7 +229,7 @@ function deliverPendingText() {
   pendingFocus = false;
 }
 
-async function showWidgetWithText(text, focus = false, sourceApp = undefined, localCheck = null) {
+async function showWidgetWithText(text, focus = false, sourceApp = undefined) {
   const cleanText = String(text ?? '');
   if (!cleanText.trim() || isUrlOnlyText(cleanText) || openingWidget) return;
   openingWidget = true;
@@ -245,7 +241,6 @@ async function showWidgetWithText(text, focus = false, sourceApp = undefined, lo
     if (mainWindow) activeGenerations.get(mainWindow.webContents.id)?.abort();
     createFloatingWidget();
     pendingText = cleanText;
-    pendingLocalCheck = localCheck;
     pendingFocus = focus;
     deliverPendingText();
   } finally {
@@ -318,7 +313,7 @@ const POWERSHELL_FOREGROUND = 'Add-Type "using System;using System.Runtime.Inter
 
 function simulateCommandKey(key) {
   if (process.platform === 'darwin') {
-    return execFileAsync('osascript', ['-e', `tell application "System Events" to keystroke "${key}" using command down`]);
+    return sendMacCommandKey(execFileAsync, key);
   }
   if (process.platform === 'win32') {
     return execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^${key}")`]);
@@ -416,12 +411,6 @@ function writeAssistantClipboard(text) {
 }
 
 function registerIpc() {
-  ipcMain.handle('grammar:check', async (_event, text) => {
-    if (isUrlOnlyText(text)) throw new Error('URLs are excluded from writing suggestions.');
-    const result = await localGrammar.check(text, config.personalDictionary);
-    if (result.suggestion) await addHistory({ id: `${Date.now()}-local`, createdAt: new Date().toISOString(), action: 'grammar', tone: 'neutral', original: text, suggestion: result.suggestion });
-    return result;
-  });
   ipcMain.handle('config:get', () => config);
   ipcMain.handle('config:save', (_event, candidate) => {
     // Runtime controls have their own patch channels; a stale Settings draft
@@ -613,15 +602,12 @@ app.whenReady().then(async () => {
       const suppress = await shouldSuppressPopup(config, source,
         (target, kind) => readBrowserUrl(execFileAsync, target, kind));
       if (suppress || isPaused(config) || clipboard.readText() !== currentText) return;
-      const localCheck = await localGrammar.check(currentText, config.personalDictionary);
-      if (!localCheck.suggestion) return;
       // A URL lookup may take time or display a macOS permission prompt. Never
       // deliver stale clipboard content or restore focus to a departed app.
       if (isPaused(config) || suppress || clipboard.readText() !== currentText || BrowserWindow.getFocusedWindow()
           || isPasting || isReplacing || !sameTarget(source, await captureFrontmostApp())) return;
       if (isPaused(config)) return;
-      await showWidgetWithText(currentText, false, source, localCheck);
-      if (config.autoSuggestOnCopy) await addHistory({ id: `${Date.now()}-local`, createdAt: new Date().toISOString(), action: 'grammar', tone: 'neutral', original: currentText, suggestion: localCheck.suggestion });
+      await showWidgetWithText(currentText, false, source);
     } catch (error) {
       console.error('Could not check popup exclusions:', error);
     } finally {
@@ -644,5 +630,4 @@ app.on('window-all-closed', () => {
 });
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  localGrammar.dispose();
 });

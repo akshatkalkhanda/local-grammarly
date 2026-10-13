@@ -13,7 +13,7 @@ export default defineConfig({
     react(),
     electron([
       {
-        entry: ['electron/main.js', 'electron/local-grammar-worker.js'],
+        entry: 'electron/main.js',
       },
     ]),
     renderer(),
