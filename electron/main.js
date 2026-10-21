@@ -620,7 +620,10 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     // Clicking the inactive suggestion panel may activate Electron on macOS.
     // Opening Settings here would steal the source editor's keyboard focus.
-    if (mainWindow?.isVisible()) return;
+    // Hiding the panel for paste-back can coincide with an activation event.
+    // Do not create a focusable Settings window in the middle of restoring
+    // the source app and verifying its selection.
+    if (isReplacing || isPasting || openingWidget || mainWindow?.isVisible()) return;
     createSettingsWindow();
   });
 });
