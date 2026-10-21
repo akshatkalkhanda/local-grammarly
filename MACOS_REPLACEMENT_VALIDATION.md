@@ -1,12 +1,28 @@
 # Replacement fix validation
 
-Base: 36063bc6a82c893954248bfca8e3bb3cceee4373.
+Current patch base: 16d63574d0cbd09b8c80d4127d8e3bc560546b95 (main after PR #23).
+
+## Remaining activation race
+
+The earlier activation and Harper-removal changes below are already on main. A second focus path remained: Replace hides the panel before restoring the source, while the macOS `activate` handler opened Settings whenever that panel was hidden. An activation event during replacement could therefore create or focus Settings and interrupt Copy/Paste verification.
+
+The handler now ignores activation while replacement, paste suppression, or popup opening is in progress. Ordinary activation with no popup still opens Settings. Existing fresh-selection verification and permission error handling remain intact.
+
+`tests/main-replacement.test.js` runs the production main-process handlers with disposable Electron/OS adapters. Injecting activation when Replace hides the panel and delaying Settings focus until Copy reproduces a focus failure against the base; the patch passes and changes only the selected disposable text. This isolates a possible event-order failure, not a confirmed reproduction on the user's Mac.
+
+The Electron smoke script no longer calls the removed Harper API. It now checks that the API is absent and exercises automatic Ollama generation through the renderer/preload/main path with a mocked model response.
+
+Current validation: 71 tests pass; lint and production renderer/main builds pass. The full Electron smoke run was attempted but this Linux host cannot create a GTK display connection, so that suite is not reported as passed. No native macOS app or DMG execution was available.
+
+On macOS, additionally verify that clicking Replace never opens Settings, including after interacting with the popup, and that ordinary app activation still opens Settings once the popup is closed. Run `npm run test:electron` before the manual cross-app checks below.
+
+## Earlier fix retained from PR #23
 
 The source activation used `activateWithOptions(0)`. When AI Editor is active after panel interaction, that call does not request activation ignoring the other active app. The patch uses `NSApplicationActivateIgnoringOtherApps` (2), retaining the existing foreground-PID and fresh-copy selection checks. Copy/Paste/Undo now use physical macOS key codes with a five-second automation timeout, avoiding character shortcut ambiguity under non-Latin input sources. Permission denial still produces a visible message and manual clipboard fallback.
 
 Harper has been removed. Automatic clipboard popups retain exclusions, pause controls, the four-word minimum and stale-source checks, and automatically request Ollama grammar suggestions when enabled. Clean text can now open the popup too: there is no offline error detector to gate it. No typing monitor or inline underlining has been implemented.
 
-## Automated evidence
+## Earlier automated evidence (PR #23)
 
 - `npm test`: 69 tests pass, including selection verification, focus loss, permission denial, automatic AI generation, stale stream cancellation and Replace IPC payloads.
 - `npm run lint`: passes.

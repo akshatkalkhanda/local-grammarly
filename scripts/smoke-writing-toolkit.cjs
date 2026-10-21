@@ -54,16 +54,28 @@ const assert = require('node:assert/strict');
   config.excludedApps = ['terminal'];
   config.presets = [{ id: 'work', name: 'Work', instruction: 'Be brief.', favorite: true }];
   await run(`window.electronAPI.saveConfig(${JSON.stringify(config)})`);
-  const localResult = await run("window.electronAPI.checkGrammar('I has a apple today.')");
-  assert.equal(localResult.suggestion, 'I have an apple today.');
-  assert.equal((await run("window.electronAPI.checkGrammar('I would like some help.')")).suggestion, '');
-  assert.equal(modelRequests, 0, 'Offline grammar checking must not call Ollama');
+  assert.equal(await run("typeof window.electronAPI.checkGrammar"), 'undefined');
+  assert.equal(modelRequests, 0);
   for (const text of ['Please help', 'Please help me', 'https://example.com']) {
     clipboardText = text;
     await new Promise(resolve => setTimeout(resolve, 350));
     assert.equal(window.isVisible(), false, `Unexpected popup for ${text}`);
   }
-  console.log('PASS: real Harper worker and IPC corrected text without Ollama; short phrases and URLs stayed quiet.');
+  console.log('PASS: removed offline API is absent; short phrases and URLs stayed quiet.');
+  // Exercise the actual renderer/preload/main generation path after Harper removal.
+  await run(`window.electronAPI.saveConfig(${JSON.stringify({ ...config, autoSuggestOnCopy: true })})`);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  window.webContents.send('text-selected', { text: 'I has a apple today.', selectionId: 100 });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await run("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Replace text') && !b.disabled)")) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(modelRequests, 1, 'Automatic grammar check must use Ollama exactly once');
+  assert.equal(await run("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Replace text') && !b.disabled)"), true);
+  assert.equal(clipboardText, 'https://example.com', 'Review must not apply or copy automatically');
+  await run(`window.electronAPI.saveConfig(${JSON.stringify(config)})`);
+  window.hide();
+  console.log('PASS: automatic Ollama suggestion reaches review with Replace enabled and no automatic paste.');
   await run("window.electronAPI.setPause('15m')");
   clipboardText = 'New disposable copy while paused';
   await new Promise(resolve => setTimeout(resolve, 500));
