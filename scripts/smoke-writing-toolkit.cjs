@@ -13,9 +13,16 @@ const assert = require('node:assert/strict');
   globalShortcut.register = () => true;
   systemPreferences.isTrustedAccessibilityClient = () => true;
   let modelRequests = 0;
-  global.fetch = async () => {
+  global.fetch = async (_url, options) => {
+    if (String(_url).endsWith('/api/tags')) {
+      return Response.json({ models: [{ name: 'qwen3:1.7b' }] });
+    }
     modelRequests += 1;
-    return new Response(JSON.stringify({ response: 'Thanks for the invitation, but I cannot make it.', done: true }) + '\n', { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
+    const { prompt } = JSON.parse(options.body);
+    const response = prompt.includes('I has a apple today.') ? 'I have an apple today.'
+      : prompt.includes('I would like some help.') ? 'I would like some help.'
+      : 'Thanks for the invitation, but I cannot make it.';
+    return new Response(JSON.stringify({ response, done: true }) + '\n', { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
   };
   await import(require('node:url').pathToFileURL(path.join(process.env.AI_EDITOR_SMOKE_APP_ROOT || path.join(__dirname, '..'), 'dist-electron/main.js')).href);
   let window;
@@ -54,16 +61,16 @@ const assert = require('node:assert/strict');
   config.excludedApps = ['terminal'];
   config.presets = [{ id: 'work', name: 'Work', instruction: 'Be brief.', favorite: true }];
   await run(`window.electronAPI.saveConfig(${JSON.stringify(config)})`);
-  const localResult = await run("window.electronAPI.checkGrammar('I has a apple today.')");
-  assert.equal(localResult.suggestion, 'I have an apple today.');
-  assert.equal((await run("window.electronAPI.checkGrammar('I would like some help.')")).suggestion, '');
-  assert.equal(modelRequests, 0, 'Offline grammar checking must not call Ollama');
+  assert.equal(await run('typeof window.electronAPI.checkGrammar'), 'undefined');
+  assert.equal(await run("window.electronAPI.generate('grammar', 'I has a apple today.')"), 'I have an apple today.');
+  assert.equal(await run("window.electronAPI.generate('grammar', 'I would like some help.')"), 'I would like some help.');
+  assert.equal(modelRequests, 2, 'Grammar requests must reach the mocked Ollama service');
   for (const text of ['Please help', 'Please help me', 'https://example.com']) {
     clipboardText = text;
     await new Promise(resolve => setTimeout(resolve, 350));
     assert.equal(window.isVisible(), false, `Unexpected popup for ${text}`);
   }
-  console.log('PASS: real Harper worker and IPC corrected text without Ollama; short phrases and URLs stayed quiet.');
+  console.log('PASS: grammar IPC used the mocked Ollama service; the retired offline API is absent; short phrases and URLs stayed quiet.');
   await run("window.electronAPI.setPause('15m')");
   clipboardText = 'New disposable copy while paused';
   await new Promise(resolve => setTimeout(resolve, 500));

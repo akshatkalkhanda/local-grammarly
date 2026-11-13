@@ -455,3 +455,5 @@ Before contributing, run tests, lint and a build. Include your macOS, Node and O
 Created by **Akshat Kalkhanda** — [akshatkalkhanda@gmail.com](mailto:akshatkalkhanda@gmail.com).
 
 There is currently no LICENSE file in the repository.
+
+Dependency maintenance: [security update notes](docs/dependency-security.md).
